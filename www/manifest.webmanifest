@@ -1,0 +1,17 @@
+{
+  "name": "INFOVIP",
+  "short_name": "INFOVIP",
+  "description": "Suite operativa offline-first: sellos, automatizaciones, planos, clima y subestaciones.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060d1c",
+  "theme_color": "#0a1930",
+  "lang": "es",
+  "icons": [
+    { "src": "./assets/icons/logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

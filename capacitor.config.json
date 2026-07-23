@@ -1,0 +1,22 @@
+{
+  "appId": "com.infovip.app",
+  "appName": "INFOVIP",
+  "webDir": "www",
+  "backgroundColor": "#060d1c",
+  "android": {
+    "backgroundColor": "#060d1c",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "Geolocation": {
+      "permissions": ["location", "coarseLocation"]
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#060d1c"
+    }
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

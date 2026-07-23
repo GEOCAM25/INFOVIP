@@ -1,0 +1,8 @@
+[
+  { "rol": "12345-6",  "direccion": "Av. Concha y Toro 1234, Puente Alto", "medidor": "MED-889201" },
+  { "rol": "20458-1",  "direccion": "Pje. Los Aromos 45, La Pintana",       "medidor": "MED-773410" },
+  { "rol": "30871-9",  "direccion": "Camino Bajos de Mena 8890, Puente Alto","medidor": "MED-660034" },
+  { "rol": "44120-2",  "direccion": "Av. La Serena 210, La Florida",         "medidor": "MED-551277" },
+  { "rol": "51002-7",  "direccion": "Costanera Sur 4102, Santiago",          "medidor": "MED-990188" },
+  { "rol": "60233-4",  "direccion": "Pje. El Bosque 12, San Bernardo",       "medidor": "MED-102934" }
+]

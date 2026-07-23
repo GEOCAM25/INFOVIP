@@ -1,0 +1,25 @@
+{
+  "name": "infovip",
+  "version": "1.0.0",
+  "private": true,
+  "description": "INFOVIP · Suite operativa offline-first (sellos, automatizaciones, planos, clima y subestaciones) empaquetada con Capacitor para Android.",
+  "type": "module",
+  "scripts": {
+    "serve": "npx --yes serve www -l 5173",
+    "cap:add:android": "cap add android",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "android:build": "cap sync android && cd android && ./gradlew assembleDebug",
+    "stamp": "node scripts/stamp-version.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/device": "^6.0.1",
+    "@capacitor/geolocation": "^6.0.1",
+    "@capacitor/haptics": "^6.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

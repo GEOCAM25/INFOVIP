@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Plataforma Android generada por Capacitor (se regenera en CI)
+/android/
+!/android/.gitkeep
+
+# Builds
+/dist/
+*.apk
+*.aab
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
