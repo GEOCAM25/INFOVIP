@@ -38,7 +38,8 @@ export function renderTabbar() {
   for (const tab of visibleTabs()) {
     const btn = document.createElement('button');
     btn.className = 'tab' + (tab.id === current ? ' active' : '');
-    btn.innerHTML = `<span class="tab-ico">${tab.icon}</span><span>${tab.name}</span>`;
+    const ico = tab.iconSvg ? `<span class="tab-ico tab-svg">${tab.iconSvg}</span>` : `<span class="tab-ico">${tab.icon}</span>`;
+    btn.innerHTML = `${ico}<span class="tab-lbl">${tab.name}</span>`;
     btn.addEventListener('click', () => { if (tab.id !== current) go(tab.id); });
     bar.appendChild(btn);
   }

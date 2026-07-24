@@ -48,7 +48,7 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --tabbar-h: 66px;
+  --tabbar-h: 76px;
   --header-h: 56px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
 }
@@ -146,22 +146,27 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; border: none; background: none; color: var(--text-mute);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .2px; cursor: pointer;
-  position: relative; transition: color .2s;
+  gap: 5px; border: none; background: none; color: var(--steel-500);
+  font-size: 11px; font-weight: 700; letter-spacing: .2px; cursor: pointer;
+  position: relative; transition: color .2s; padding: 6px 2px;
 }
-.tab .tab-ico { font-size: 21px; line-height: 1; transition: transform .2s; }
+.tab .tab-ico {
+  font-size: 23px; line-height: 1; width: 46px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 14px; transition: transform .2s, background .2s, box-shadow .2s;
+}
+.tab .tab-svg { color: var(--steel-500); }
+.tab .tab-svg svg { width: 24px; height: 24px; }
+.tab .tab-lbl { transition: color .2s, opacity .2s; }
+.tab:active .tab-ico { transform: scale(.9); }
 .tab.active { color: var(--steel-100); }
-.tab.active .tab-ico { transform: translateY(-2px); }
-.tab.active::before {
-  content: ""; position: absolute; top: 8px; width: 42px; height: 34px; border-radius: 12px;
-  background: radial-gradient(circle at 50% 30%, var(--accent-glow), transparent 70%);
+.tab.active .tab-ico {
+  background: linear-gradient(160deg, var(--accent), #1b4fa8);
+  box-shadow: inset 0 1px 0 rgba(200,225,255,.25), 0 6px 16px var(--accent-glow);
+  transform: translateY(-3px);
 }
-.tab.active::after {
-  content: ""; position: absolute; bottom: 6px; width: 22px; height: 3px; border-radius: 3px;
-  background: linear-gradient(90deg, var(--metal-hi), var(--accent));
-  box-shadow: 0 0 8px var(--accent);
-}
+.tab.active .tab-svg { color: #fff; }
+.tab.active .tab-lbl { color: var(--steel-100); }
 
 /* ---------- Toast update ---------- */
 .toast {

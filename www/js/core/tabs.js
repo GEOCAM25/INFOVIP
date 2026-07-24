@@ -9,13 +9,23 @@ import { prefs, KEYS } from './store.js';
 
 // Registro canónico de módulos. 'id' es estable; el orden por defecto
 // es el de este array. El módulo 'config' no aparece en la tabbar.
+// Ícono de Planos: red de distribución eléctrica esquemática (SVG inline).
+const PLANOS_SVG = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 12h4l2-4 3 7 2-5h3"/>
+  <path d="M17 10v6M12 10v3"/>
+  <circle cx="3" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+  <circle cx="17" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+  <circle cx="21" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+  <circle cx="17" cy="16" r="1.4" fill="currentColor" stroke="none"/>
+  <circle cx="12" cy="13" r="1.4" fill="currentColor" stroke="none"/>
+</svg>`;
+
 export const REGISTRY = [
   { id: 'inicio',    name: 'Inicio',    icon: '🏠', fixedHome: false },
   { id: 'sellos',    name: 'Sellos',    icon: '🔖' },
-  { id: 'rendir',    name: 'Rendir',    icon: '📤' },
   { id: 'autos',     name: 'Alarmas',   icon: '⚡' },
-  { id: 'planos',    name: 'Planos',    icon: '📐' },
-  { id: 'clima',     name: 'Clima/SE',  icon: '🌦️' }
+  { id: 'planos',    name: 'Planos',    iconSvg: PLANOS_SVG },
+  { id: 'se',        name: 'S/E',       icon: '📡' }
 ];
 
 export function byId(id) { return REGISTRY.find((t) => t.id === id); }

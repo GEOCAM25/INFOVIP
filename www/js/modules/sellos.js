@@ -41,10 +41,40 @@ function search(q) {
   ).slice(0, 30);
 }
 
-async function render(root) {
+async function render(root, params = {}) {
   clear(root);
   await ensureLoaded();
 
+  // Segmento inicial (permite abrir directo en Rendir tras login MS)
+  let seg = params.seg || prefs.get('sellosSeg', 'buscar');
+  prefs.set('sellosSeg', seg);
+
+  const nav = h('div', { class: 'row', style: 'gap:8px;margin-bottom:14px' });
+  const panel = h('div');
+  root.appendChild(nav); root.appendChild(panel);
+
+  function segBtn(label, id) {
+    const b = h('button', { class: 'btn ' + (seg === id ? 'primary' : 'ghost') + ' sm', style: 'flex:1' }, label);
+    b.addEventListener('click', () => { seg = id; prefs.set('sellosSeg', id); repaint(); route(); });
+    b._id = id; return b;
+  }
+  nav.appendChild(segBtn('🔎 Buscar', 'buscar'));
+  nav.appendChild(segBtn('📤 Rendir', 'rendir'));
+  function repaint() { [...nav.children].forEach((c) => { c.className = 'btn ' + (c._id === seg ? 'primary' : 'ghost') + ' sm'; c.style.flex = '1'; }); }
+
+  async function route() {
+    if (seg === 'rendir') {
+      const { renderRendir } = await import('./rendicion.js');
+      renderRendir(panel);
+    } else {
+      renderBuscar(panel);
+    }
+  }
+  route();
+}
+
+function renderBuscar(root) {
+  clear(root);
   root.appendChild(h('div', { class: 'page-title' }, 'Planilla Sellos'));
   root.appendChild(h('div', { class: 'page-sub' }, `${INDEX.length} registros locales · busca por ROL`));
 
@@ -103,7 +133,7 @@ function openImport(root) {
           const n = await db.bulkPut('sellos', rows);
           prefs.set('sellosSeeded', true);
           api.close(); toast(`✅ ${n} registros importados`);
-          render(root);
+          renderBuscar(root);
         } catch (e) { toast('Archivo inválido'); }
       } }, 'Importar'));
     }, 'Aislado y local.');
@@ -121,7 +151,7 @@ function openAdd(root) {
       body.appendChild(h('button', { class: 'btn primary', onClick: async () => {
         if (!rol.value.trim()) return toast('El ROL es obligatorio');
         await db.put('sellos', { rol: rol.value.trim(), direccion: dir.value.trim(), medidor: med.value.trim() });
-        api.close(); toast('Guardado'); render(root);
+        api.close(); toast('Guardado'); renderBuscar(root);
       } }, 'Guardar'));
     });
   });

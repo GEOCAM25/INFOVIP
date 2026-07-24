@@ -53,10 +53,10 @@ function statCard(ico, value, label) {
 }
 function descOf(id) {
   return {
-    sellos: 'Buscar por ROL',
+    sellos: 'Buscar ROL y rendir',
     autos: 'Reglas y alarmas',
-    planos: 'Visor PDF',
-    clima: 'Clima y subestaciones'
+    planos: 'Visor PDF con capas',
+    se: 'Novedades y WhatsApp'
   }[id] || '';
 }
 

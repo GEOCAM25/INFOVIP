@@ -62,58 +62,128 @@ function openAdd(root) {
   });
 }
 
-/* ---------------- Visor ---------------- */
+/* ---------------- Visor a pantalla completa con zoom por gestos ---------------- */
 async function openViewer(plano) {
-  const view = sheet(plano.name, () => {}, 'Cargando…');
-  const body = view.body;
-  let dark = true, scale = 1.15, doc = null;
+  let dark = true, doc = null;
 
-  const stage = h('div', { class: 'pdf-stage' });
-  const info = h('span', { class: 'muted', style: 'font-size:12px' }, 'Renderizando…');
-  const toolbar = h('div', { class: 'pdf-toolbar' },
-    h('button', { class: 'btn ghost sm', onClick: () => { dark = !dark; applyDark(); } }, '🌓 Modo lectura'),
-    h('button', { class: 'btn ghost sm', onClick: () => { scale = Math.min(3, scale + 0.25); repaint(); } }, '➕'),
-    h('button', { class: 'btn ghost sm', onClick: () => { scale = Math.max(0.5, scale - 0.25); repaint(); } }, '➖'),
-    info
-  );
-  body.appendChild(toolbar);
-  body.appendChild(stage);
+  // Overlay a pantalla completa
+  const info = h('span', { class: 'pdfv-info' }, 'Cargando…');
+  const btnDark = h('button', { class: 'pdfv-btn', title: 'Modo lectura' }, '🌓');
+  const btnReset = h('button', { class: 'pdfv-btn', title: 'Ajustar' }, '⤢');
+  const btnClose = h('button', { class: 'pdfv-btn', title: 'Cerrar' }, '✕');
+  const bar = h('div', { class: 'pdfv-bar' },
+    h('span', { class: 'pdfv-title' }, esc(plano.name)), info,
+    h('div', { class: 'pdfv-actions' }, btnDark, btnReset, btnClose));
+  const layer = h('div', { class: 'pdfv-layer' });
+  const stage = h('div', { class: 'pdfv-stage' }, layer);
+  const overlay = h('div', { class: 'pdfv-overlay' }, bar, stage);
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  btnClose.addEventListener('click', close);
+
+  // Estado de zoom/paneo (transform sobre 'layer', sin re-renderizar → sin crash)
+  let scale = 1, minScale = 1, tx = 0, ty = 0;
+  const apply = () => { layer.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+  function fit() {
+    // Centrar horizontalmente al ancho del stage
+    const sw = stage.clientWidth, lw = layer.scrollWidth || sw;
+    scale = 1; minScale = 1; tx = Math.max(0, (sw - lw) / 2); ty = 0; apply();
+  }
+  btnReset.addEventListener('click', fit);
 
   function applyDark() {
-    // Filtro CSS inteligente: invierte + rota matiz para conservar colores
-    // pero pasar el fondo blanco a oscuro. Muy fluido (GPU).
-    stage.querySelectorAll('canvas').forEach((c) => {
+    layer.querySelectorAll('canvas').forEach((c) => {
       c.style.filter = dark ? 'invert(1) hue-rotate(180deg) brightness(.92) contrast(1.05)' : 'none';
     });
-    stage.style.background = dark ? '#0a1526' : '#e9edf4';
+    stage.style.background = dark ? '#0a1526' : '#eef2f8';
+    btnDark.classList.toggle('on', dark);
   }
+  btnDark.addEventListener('click', () => { dark = !dark; applyDark(); });
 
-  async function repaint() {
-    if (!doc) return;
-    clear(stage);
-    for (let n = 1; n <= doc.numPages; n++) {
-      const page = await doc.getPage(n);
-      const viewport = page.getViewport({ scale: scale * (window.devicePixelRatio > 1 ? 1.3 : 1) });
-      const canvas = h('canvas');
-      canvas.width = viewport.width; canvas.height = viewport.height;
-      canvas.style.width = (viewport.width / (window.devicePixelRatio > 1 ? 1.3 : 1) / scale * scale) + 'px';
-      stage.appendChild(canvas);
-      const ctx = canvas.getContext('2d');
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      info.textContent = `Página ${n}/${doc.numPages}`;
+  /* ---- Gestos: pellizco (pinch) para zoom, un dedo para paneo, doble toque para ajustar ---- */
+  const pts = new Map();
+  let startDist = 0, startScale = 1, startMid = null, startTx = 0, startTy = 0, lastTap = 0;
+  const dist = (a, b) => Math.hypot(a.x - b.x, b.y - a.y);
+  const rect = () => stage.getBoundingClientRect();
+
+  stage.addEventListener('pointerdown', (e) => {
+    stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) {
+      const [p1, p2] = [...pts.values()];
+      startDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      startScale = scale;
+      const r = rect();
+      startMid = { x: (p1.x + p2.x) / 2 - r.left, y: (p1.y + p2.y) / 2 - r.top };
+      startTx = tx; startTy = ty;
+    } else if (pts.size === 1) {
+      startTx = tx; startTy = ty;
+      const now = Date.now();
+      if (now - lastTap < 280) { // doble toque
+        if (scale > minScale + 0.05) fit();
+        else { scale = 2.4; const r = rect(); tx = (r.width / 2) - (e.clientX - r.left - tx) / startScale * scale; apply(); }
+      }
+      lastTap = now;
     }
-    applyDark();
-    info.textContent = `${doc.numPages} página(s)`;
-  }
+  });
 
+  stage.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId);
+    const cur = { x: e.clientX, y: e.clientY };
+    pts.set(e.pointerId, cur);
+    if (pts.size === 2) {
+      const arr = [...pts.values()];
+      const d = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+      const ns = Math.min(6, Math.max(minScale, startScale * (d / (startDist || d))));
+      tx = startMid.x - (startMid.x - startTx) * (ns / startScale);
+      ty = startMid.y - (startMid.y - startTy) * (ns / startScale);
+      scale = ns; apply();
+    } else if (pts.size === 1) {
+      // paneo: delta respecto de la posición previa de este dedo
+      tx += cur.x - prev.x; ty += cur.y - prev.y; apply();
+    }
+  });
+
+  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) startDist = 0; };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+  // Rueda del mouse (para pruebas en escritorio)
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const r = rect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const ns = Math.min(6, Math.max(minScale, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+    tx = mx - (mx - tx) * (ns / scale); ty = my - (my - ty) * (ns / scale);
+    scale = ns; apply();
+  }, { passive: false });
+
+  // Render: una sola vez, a resolución nítida (cap de tamaño para no reventar memoria)
   try {
     const lib = await loadPdfJs();
     const buf = await plano.blob.arrayBuffer();
     doc = await lib.getDocument({ data: buf }).promise;
-    await repaint();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const MAXW = 2600; // límite de píxeles por página (evita crash por memoria)
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const targetCss = stage.clientWidth - 8;
+      let renderScale = (targetCss * dpr) / base.width;
+      if (base.width * renderScale > MAXW) renderScale = MAXW / base.width;
+      const vp = page.getViewport({ scale: renderScale });
+      const canvas = h('canvas');
+      canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+      canvas.style.width = Math.round(vp.width / dpr) + 'px';
+      canvas.style.height = 'auto';
+      layer.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport: vp }).promise;
+      info.textContent = `Página ${n}/${doc.numPages}`;
+    }
+    info.textContent = `${doc.numPages} pág.`;
+    applyDark(); fit();
   } catch (e) {
-    clear(stage);
-    stage.appendChild(emptyState('⚠️', 'No se pudo renderizar el PDF.'));
+    layer.appendChild(emptyState('⚠️', 'No se pudo renderizar el PDF.'));
     console.error(e);
   }
 }

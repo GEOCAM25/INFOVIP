@@ -9,7 +9,19 @@ import { db } from '../core/db.js';
 import { geo, device } from '../core/native.js';
 import { pinCrypto } from '../core/crypto.js';
 import { extractAudioFromVideo } from '../core/audioTools.js';
-import { startEngine, engineStatus, syncWatchers, watchingLocation, backgroundCapable } from './engine.js';
+import { startEngine, engineStatus, syncWatchers, watchingLocation, backgroundCapable, VIBRATIONS } from './engine.js';
+
+// 5 sonidos integrados (archivos en assets/sounds y res/raw)
+const SOUNDS = [
+  { id: 'bip', name: '🔉 Bip' },
+  { id: 'sirena', name: '🚨 Sirena' },
+  { id: 'campana', name: '🔔 Campana' },
+  { id: 'alerta', name: '⚠️ Alerta' },
+  { id: 'timbre', name: '📣 Timbre' }
+];
+function previewUrl(url, volume) {
+  try { const a = new Audio(url); a.volume = Math.max(0, Math.min(1, (volume ?? 100) / 100)); a.play().catch(() => {}); } catch (_) {}
+}
 
 async function render(root) {
   clear(root);
@@ -77,10 +89,11 @@ function describe(rule) {
   if (c.location && c.location.lat != null) parts.push(`📍 a ${c.location.radius || 100} m del punto`);
   if (c.battery && c.battery.op) parts.push(`🔋 batería ${c.battery.op === 'lt' ? '<' : c.battery.op === 'gt' ? '>' : '='} ${c.battery.value}%`);
   const cond = parts.length ? parts.join(` ${rule.logic === 'or' ? 'O' : 'Y'} `) : 'sin condiciones';
-  const out = [];
-  if (a.audioId != null) out.push(`🔊 audio ${a.volume ?? 100}%`);
-  if (a.vibrate) out.push('📳 vibra');
-  return `SI ${cond} → ${out.join(' + ') || 'aviso'}`;
+  const mode = a.mode || (a.audioId != null ? 'propio' : 'vibrar');
+  const out = ['📳 ' + (a.vibration || 'doble')];
+  if (mode === 'sonido') out.push(`🔔 ${a.sound || 'sonido'}`);
+  else if (mode === 'propio') out.push('🎵 propio');
+  return `SI ${cond} → ${out.join(' + ')}`;
 }
 
 async function unlock(rule) {
@@ -96,7 +109,7 @@ function openEditor(root, existing) {
   const rule = existing ? JSON.parse(JSON.stringify(existing)) : {
     name: '', enabled: true, logic: 'and',
     conditions: { location: null, battery: null },
-    action: { audioId: null, audioName: '', volume: 100, vibrate: true, vibrateMs: 600, loop: false },
+    action: { mode: 'vibrar', sound: 'sirena', vibration: 'doble', audioId: null, audioName: '', volume: 100, loop: false },
     pin: null
   };
 
@@ -142,33 +155,65 @@ function openEditor(root, existing) {
     logic.value = rule.logic || 'and';
     body.appendChild(field('Cómo combinar condiciones', logic));
 
-    // --- Acción: audio ---
+    // --- Acción: salida ---
     body.appendChild(h('div', { class: 'divider' }));
-    body.appendChild(h('div', { class: 'sr-title' }, '🔊 Salida'));
-    const audioLabel = h('div', { class: 'muted', style: 'margin:6px 0' }, rule.action.audioName ? `Audio: ${rule.action.audioName}` : 'Sin audio seleccionado');
-    body.appendChild(audioLabel);
-    body.appendChild(h('div', { class: 'btn-row' },
-      h('button', { class: 'btn ghost sm', onClick: () => pickOrConvertAudio(rule, audioLabel) }, '🎵 Elegir / convertir'),
-      h('button', { class: 'btn ghost sm', onClick: async () => { if (rule.action.audioId != null) previewAudio(rule.action.audioId, rule.action.volume); } }, '▶️ Probar')
-    ));
+    body.appendChild(h('div', { class: 'sr-title' }, '🔊 Salida al dispararse'));
 
-    // Volumen
+    // Modo: solo vibrar / vibrar + sonido / sonido propio
+    const mode = h('select', { class: 'select' },
+      h('option', { value: 'vibrar' }, '📳 Solo vibrar'),
+      h('option', { value: 'sonido' }, '🔔 Vibrar + sonido'),
+      h('option', { value: 'propio' }, '🎵 Vibrar + sonido propio'));
+    mode.value = rule.action.mode || (rule.action.audioId != null ? 'propio' : 'vibrar');
+    body.appendChild(field('Modo', mode));
+
+    // Selector de sonido integrado
+    const sound = h('select', { class: 'select' },
+      ...SOUNDS.map((s) => h('option', { value: s.id }, s.name)));
+    sound.value = rule.action.sound || 'sirena';
+    const soundBox = h('div', { class: 'field' }, h('label', {}, 'Sonido'),
+      h('div', { class: 'row', style: 'gap:8px' },
+        h('div', { style: 'flex:1' }, sound),
+        h('button', { class: 'btn ghost sm', style: 'width:auto', onClick: () => previewUrl(`./assets/sounds/${sound.value}.wav`, Number(vol.value)) }, '▶️')));
+
+    // Sonido propio (subir / convertir video)
+    const audioLabel = h('div', { class: 'muted', style: 'margin:6px 0' }, rule.action.audioName ? `Audio: ${rule.action.audioName}` : 'Sin audio propio');
+    const propioBox = h('div',
+      audioLabel,
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn ghost sm', onClick: () => pickOrConvertAudio(rule, audioLabel) }, '🎵 Elegir / convertir'),
+        h('button', { class: 'btn ghost sm', onClick: () => { if (rule.action.audioId != null) previewAudio(rule.action.audioId, Number(vol.value)); } }, '▶️ Probar')));
+
+    body.appendChild(soundBox); body.appendChild(propioBox);
+
+    // Tipo de vibración
+    const vibType = h('select', { class: 'select' },
+      h('option', { value: 'corta' }, 'Corta'),
+      h('option', { value: 'larga' }, 'Larga'),
+      h('option', { value: 'doble' }, 'Doble'),
+      h('option', { value: 'triple' }, 'Triple'),
+      h('option', { value: 'sos' }, 'SOS (S·O·S)'));
+    vibType.value = rule.action.vibration || 'doble';
+    body.appendChild(field('Tipo de vibración', h('div', { class: 'row', style: 'gap:8px' },
+      h('div', { style: 'flex:1' }, vibType),
+      h('button', { class: 'btn ghost sm', style: 'width:auto', onClick: () => { if (navigator.vibrate) navigator.vibrate(VIBRATIONS[vibType.value] || [0, 220]); } }, '📳'))));
+
+    // Volumen + loop (para modos con sonido)
     const vol = h('input', { type: 'range', min: '0', max: '100', value: rule.action.volume ?? 100, style: 'width:100%' });
     const volLbl = h('span', { class: 'v' }, `${rule.action.volume ?? 100}%`);
     vol.addEventListener('input', () => { volLbl.textContent = `${vol.value}%`; });
-    body.appendChild(h('div', { class: 'row between', style: 'margin:14px 0 4px' }, h('span', { class: 'k muted' }, 'Volumen'), volLbl));
-    body.appendChild(vol);
-
-    // Loop
     const loop = h('input', { type: 'checkbox', ...(rule.action.loop ? { checked: true } : {}) });
-    body.appendChild(h('label', { class: 'row', style: 'gap:8px;margin-top:12px' }, loop, h('span', { class: 'muted' }, 'Repetir el sonido (máx 30 s)')));
+    const soundExtra = h('div',
+      h('div', { class: 'row between', style: 'margin:14px 0 4px' }, h('span', { class: 'k muted' }, 'Volumen'), volLbl), vol,
+      h('label', { class: 'row', style: 'gap:8px;margin-top:12px' }, loop, h('span', { class: 'muted' }, 'Repetir el sonido (máx 30 s)')));
+    body.appendChild(soundExtra);
 
-    // Vibración
-    const vib = toggle(rule.action.vibrate, () => true);
-    body.appendChild(h('div', { class: 'setting-row', style: 'margin-top:8px' },
-      h('div', { class: 'sr-main' }, h('div', { class: 'sr-title' }, '📳 Vibración'), h('div', { class: 'sr-desc' }, 'Vibrar al dispararse')),
-      vib
-    ));
+    const applyMode = () => {
+      soundBox.hidden = mode.value !== 'sonido';
+      propioBox.hidden = mode.value !== 'propio';
+      soundExtra.hidden = mode.value === 'vibrar';
+    };
+    mode.addEventListener('change', applyMode); applyMode();
 
     // --- Seguridad PIN ---
     body.appendChild(h('div', { class: 'divider' }));
@@ -187,9 +232,11 @@ function openEditor(root, existing) {
       rule.logic = logic.value;
       if (rule.conditions.location) rule.conditions.location.radius = Number(radius.value) || 100;
       rule.conditions.battery = batOp.value ? { op: batOp.value, value: Number(batVal.value) } : null;
+      rule.action.mode = mode.value;
+      rule.action.sound = sound.value;
+      rule.action.vibration = vibType.value;
       rule.action.volume = Number(vol.value);
       rule.action.loop = loop.checked;
-      rule.action.vibrate = vib.querySelector('input').checked;
       if (!rule.conditions.location && !rule.conditions.battery) return toast('Define al menos una condición');
       if (existing) await db.put('automatizaciones', rule);
       else { delete rule.id; await db.add('automatizaciones', rule); }

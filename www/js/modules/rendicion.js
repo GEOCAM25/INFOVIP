@@ -154,4 +154,5 @@ function select(options, blank) {
   return s;
 }
 
+export { render as renderRendir };
 register('rendir', { render, title: 'Rendición de Sellos' });

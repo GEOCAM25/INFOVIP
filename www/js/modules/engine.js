@@ -91,30 +91,53 @@ async function matches(rule, bat) {
   return rule.logic === 'or' ? checks.some(Boolean) : checks.every(Boolean);
 }
 
+// Patrones de vibración (ms) para navigator.vibrate en primer plano.
+export const VIBRATIONS = {
+  corta: [0, 250],
+  larga: [0, 700],
+  doble: [0, 220, 150, 220],
+  triple: [0, 150, 120, 150, 120, 150],
+  sos:   [0, 150, 100, 150, 100, 150, 300, 420, 120, 420, 120, 420, 300, 150, 100, 150, 100, 150]
+};
+
 async function fire(rule) {
   const act = rule.action || {};
-  // Vibración
-  if (act.vibrate) haptics.vibrate(act.vibrateMs || 600);
+  const mode = act.mode || (act.audioId != null ? 'propio' : 'vibrar');
 
-  // Audio
-  if (act.audioId != null) {
+  // 1) Vibración (patrón elegido). En primer plano vibra por patrón;
+  //    en segundo plano vibra el canal de la notificación.
+  const pattern = VIBRATIONS[act.vibration || 'doble'] || VIBRATIONS.doble;
+  if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (_) {} }
+  else haptics.vibrate(600);
+
+  // 2) Sonido
+  let channelId = 'inf_vibra', soundFile = null;
+  if (mode === 'sonido' && act.sound) {
+    channelId = `inf_${act.sound}`; soundFile = `${act.sound}.wav`;
+    playUrl(`./assets/sounds/${act.sound}.wav`, act.volume, act.loop);
+  } else if (mode === 'propio' && act.audioId != null) {
+    channelId = 'inf_default';
     try {
       const audio = await db.get('audios', act.audioId);
-      if (audio && audio.blob) {
-        const url = URL.createObjectURL(audio.blob);
-        const el = new Audio(url);
-        el.volume = Math.max(0, Math.min(1, (act.volume ?? 100) / 100));
-        el.loop = !!act.loop;
-        el.play().catch(() => {});
-        el.addEventListener('ended', () => URL.revokeObjectURL(url));
-        // Detener loop tras 30s de seguridad
-        if (act.loop) setTimeout(() => { el.pause(); URL.revokeObjectURL(url); }, 30000);
-      }
+      if (audio && audio.blob) playUrl(URL.createObjectURL(audio.blob), act.volume, act.loop, true);
     } catch (_) {}
   }
-  // Notificación local: llega aunque la app esté en segundo plano.
-  notify('⚡ ' + (rule.name || 'Automatización'), describeFire(rule));
+
+  // 3) Notificación (llega en segundo plano; su canal aporta sonido/vibración)
+  notify('⚡ ' + (rule.name || 'Automatización'), describeFire(rule), { channelId, sound: soundFile });
   toast(`⚡ ${rule.name}`);
+}
+
+function playUrl(url, volume, loop, revoke) {
+  try {
+    const el = new Audio(url);
+    el.volume = Math.max(0, Math.min(1, (volume ?? 100) / 100));
+    el.loop = !!loop;
+    el.play().catch(() => {});
+    const done = () => { if (revoke) URL.revokeObjectURL(url); };
+    el.addEventListener('ended', done);
+    if (loop) setTimeout(() => { el.pause(); done(); }, 30000);
+  } catch (_) {}
 }
 
 function describeFire(rule) {

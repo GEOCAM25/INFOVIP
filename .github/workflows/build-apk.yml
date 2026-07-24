@@ -45,6 +45,12 @@ jobs:
       - name: Patch Android manifest (deep-link login)
         run: node scripts/patch-android.mjs
 
+      - name: Copy alarm sounds to Android res/raw
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          cp resources/raw/*.wav android/app/src/main/res/raw/ 2>/dev/null || true
+          ls -la android/app/src/main/res/raw/ || true
+
       - name: Generate app icon & splash (from assets/ logo)
         run: npx @capacitor/assets generate --android --iconBackgroundColor '#0a1930' --iconBackgroundColorDark '#0a1930' --splashBackgroundColor '#060d1c' --splashBackgroundColorDark '#060d1c'
 

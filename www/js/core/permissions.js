@@ -67,15 +67,38 @@ export async function requestAll() {
   return { location, notifications };
 }
 
-/* ---------- Disparar una notificación local (alarmas) ---------- */
+/* ---------- Canales de notificación (Android) ----------
+   Un canal por sonido (con vibración activada) + uno solo-vibración.
+   El sonido y la vibración de una notificación en Android dependen del
+   canal, por eso creamos uno por cada sonido integrado. */
+export const BUILTIN_SOUNDS = ['bip', 'sirena', 'campana', 'alerta', 'timbre'];
+let _channelsReady = false;
+async function ensureChannels() {
+  const LN = plugin('LocalNotifications');
+  if (!LN || !LN.createChannel || _channelsReady) return;
+  _channelsReady = true;
+  const base = { importance: 5, visibility: 1, vibration: true, lights: true };
+  try {
+    await LN.createChannel({ id: 'inf_vibra', name: 'Alarmas (solo vibrar)', ...base });
+    await LN.createChannel({ id: 'inf_default', name: 'Alarmas INFOVIP', ...base });
+    for (const s of BUILTIN_SOUNDS) {
+      await LN.createChannel({ id: `inf_${s}`, name: `Alarma · ${s}`, sound: `${s}.wav`, ...base });
+    }
+  } catch (_) {}
+}
+
+/* ---------- Disparar una notificación local (alarmas) ----------
+   opts: { channelId, sound }  (sound = nombre de archivo en res/raw) */
 let _notifId = 1;
-export async function notify(title, body) {
-  const LocalNotifications = plugin('LocalNotifications');
-  if (LocalNotifications && LocalNotifications.schedule) {
+export async function notify(title, body, opts = {}) {
+  const LN = plugin('LocalNotifications');
+  if (LN && LN.schedule) {
     try {
-      await LocalNotifications.schedule({
-        notifications: [{ id: _notifId++, title, body, schedule: { at: new Date(Date.now() + 200) } }]
-      });
+      await ensureChannels();
+      const n = { id: _notifId++, title, body, schedule: { at: new Date(Date.now() + 200) } };
+      if (opts.channelId) n.channelId = opts.channelId;
+      if (opts.sound) n.sound = opts.sound;
+      await LN.schedule({ notifications: [n] });
       return true;
     } catch (_) {}
   }
