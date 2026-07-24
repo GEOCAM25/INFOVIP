@@ -8,6 +8,7 @@
 import { h, clear, toast, emptyState, sheet, confirmSheet, esc, fmtTime } from '../core/ui.js';
 import { register } from '../core/router.js';
 import { db } from '../core/db.js';
+import { prefs } from '../core/store.js';
 
 let pdfjs = null;
 async function loadPdfJs() {
@@ -68,12 +69,13 @@ async function openViewer(plano) {
 
   // Overlay a pantalla completa
   const info = h('span', { class: 'pdfv-info' }, 'Cargando…');
+  const btnLayers = h('button', { class: 'pdfv-btn', title: 'Capas', hidden: true }, '🗂');
   const btnDark = h('button', { class: 'pdfv-btn', title: 'Modo lectura' }, '🌓');
   const btnReset = h('button', { class: 'pdfv-btn', title: 'Ajustar' }, '⤢');
   const btnClose = h('button', { class: 'pdfv-btn', title: 'Cerrar' }, '✕');
   const bar = h('div', { class: 'pdfv-bar' },
     h('span', { class: 'pdfv-title' }, esc(plano.name)), info,
-    h('div', { class: 'pdfv-actions' }, btnDark, btnReset, btnClose));
+    h('div', { class: 'pdfv-actions' }, btnLayers, btnDark, btnReset, btnClose));
   const layer = h('div', { class: 'pdfv-layer' });
   const stage = h('div', { class: 'pdfv-stage' }, layer);
   const overlay = h('div', { class: 'pdfv-overlay' }, bar, stage);
@@ -158,18 +160,34 @@ async function openViewer(plano) {
     scale = ns; apply();
   }, { passive: false });
 
-  // Render: una sola vez, a resolución nítida (cap de tamaño para no reventar memoria)
+  // Estado de capas (OCG)
+  const pages = [];
+  let ocConfig = null;
+  let rendering = false;
+  const lockKey = 'planoLocks:' + (plano.id ?? plano.name);
+
+  async function renderPageInto(entry) {
+    const params = { canvasContext: entry.canvas.getContext('2d', { alpha: false }), viewport: entry.vp };
+    // pdf.js espera una PROMESA con la config de capas.
+    if (ocConfig) params.optionalContentConfigPromise = Promise.resolve(ocConfig);
+    await entry.page.render(params).promise;
+  }
+  async function renderAll() {
+    if (rendering) return; rendering = true;
+    try { for (const e of pages) await renderPageInto(e); } finally { rendering = false; }
+    applyDark();
+  }
+
+  // Render inicial (una vez, a resolución nítida con tope de memoria por gama)
   try {
     const lib = await loadPdfJs();
     const buf = await plano.blob.arrayBuffer();
     doc = await lib.getDocument({ data: buf }).promise;
-    // Ajuste por gama del equipo: en teléfonos con poca RAM bajamos la
-    // resolución de render para no reventar memoria (sin perder nitidez
-    // en equipos capaces). deviceMemory ~ GB de RAM.
     const mem = navigator.deviceMemory || 4;
     const lowEnd = mem <= 2;
     const dpr = Math.min(window.devicePixelRatio || 1, lowEnd ? 1 : 2);
-    const MAXW = lowEnd ? 1700 : 2600; // tope de píxeles por página
+    const MAXW = lowEnd ? 1700 : 2600;
+    ocConfig = await doc.getOptionalContentConfig().catch(() => null);
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
@@ -182,14 +200,60 @@ async function openViewer(plano) {
       canvas.style.width = Math.round(vp.width / dpr) + 'px';
       canvas.style.height = 'auto';
       layer.appendChild(canvas);
-      await page.render({ canvasContext: canvas.getContext('2d', { alpha: false }), viewport: vp }).promise;
+      const entry = { page, canvas, vp };
+      pages.push(entry);
+      await renderPageInto(entry);
       info.textContent = `Página ${n}/${doc.numPages}`;
     }
     info.textContent = `${doc.numPages} pág.`;
     applyDark(); fit();
+
+    // Detectar capas y aplicar candados guardados
+    const groups = ocConfig && ocConfig.getGroups ? ocConfig.getGroups() : null;
+    const ids = groups ? Object.keys(groups) : [];
+    if (ids.length) {
+      const locked = new Set((prefs.get(lockKey, []) || []).filter((id) => ids.includes(id)));
+      btnLayers.hidden = false;
+      info.textContent = `${doc.numPages} pág. · ${ids.length} capas`;
+      btnLayers.addEventListener('click', () => openLayers(groups, ids, locked, renderAll));
+    }
   } catch (e) {
     layer.appendChild(emptyState('⚠️', 'No se pudo renderizar el PDF.'));
     console.error(e);
+  }
+
+  /* ---- Panel de capas: fijar (candado) + aislar al tocar ---- */
+  function openLayers(groups, ids, locked, repaint) {
+    sheet('Capas del plano', (body) => {
+      body.appendChild(h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
+        h('button', { class: 'btn ghost sm', onClick: () => { ids.forEach((id) => ocConfig.setVisibility(id, true)); repaint(); refresh(); toast('Todas visibles'); } }, '👁  Mostrar todas')));
+      const listWrap = h('div');
+      body.appendChild(listWrap);
+      function refresh() {
+        listWrap.innerHTML = '';
+        ids.forEach((id) => {
+          const name = (groups[id] && groups[id].name) || id;
+          const isLocked = locked.has(id);
+          const vis = ocConfig.isVisible(id);
+          const lockBtn = h('button', { class: 'btn ' + (isLocked ? 'primary' : 'ghost') + ' sm', style: 'width:auto' }, isLocked ? '🔒 Fijada' : '🔓 Fijar');
+          lockBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (locked.has(id)) locked.delete(id);
+            else { locked.add(id); ocConfig.setVisibility(id, true); }
+            prefs.set(lockKey, [...locked]); repaint(); refresh();
+          });
+          const row = h('div', { class: 'reorder-item', style: 'touch-action:auto;cursor:pointer' },
+            h('span', { class: 'ri-ico' }, isLocked ? '🔒' : (vis ? '👁' : '🚫')),
+            h('span', { class: 'ri-name', style: vis ? '' : 'opacity:.45' }, esc(name)),
+            lockBtn);
+          // Tocar la fila = aislar esa capa (+ las fijadas)
+          row.addEventListener('click', () => { ids.forEach((x) => ocConfig.setVisibility(x, x === id || locked.has(x))); repaint(); refresh(); toast('Solo: ' + name); });
+          listWrap.appendChild(row);
+        });
+      }
+      refresh();
+      body.appendChild(h('div', { class: 'hint', style: 'margin-top:12px' }, 'Toca una capa para ver SOLO esa (más las fijadas). “Fijar” 🔒 mantiene una capa siempre visible aunque aísles otras.'));
+    }, `${ids.length} capas`);
   }
 }
 

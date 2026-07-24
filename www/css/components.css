@@ -95,7 +95,7 @@ textarea.input { resize: vertical; min-height: 90px; }
 .empty p { margin: 12px 0 0; font-size: 14px; }
 
 /* Modal / hoja inferior */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(3,8,18,.66); backdrop-filter: blur(4px); display: flex; align-items: flex-end; animation: fade .2s; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 130; background: rgba(3,8,18,.66); backdrop-filter: blur(4px); display: flex; align-items: flex-end; animation: fade .2s; }
 .sheet {
   width: 100%; max-height: 88dvh; overflow-y: auto;
   background: linear-gradient(180deg, var(--surface-2b), var(--surface));
