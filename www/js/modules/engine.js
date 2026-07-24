@@ -8,10 +8,13 @@
 import { db } from '../core/db.js';
 import { device, haptics, distanceMeters } from '../core/native.js';
 import { toast } from '../core/ui.js';
+import { prefs } from '../core/store.js';
 import { notify } from '../core/permissions.js';
+import { getCurrentWeather, summarize } from '../core/weather.js';
 import * as bggeo from '../core/bggeo.js';
 
 let batteryTimer = null;
+let climaTimer = null;
 let lastPos = null;
 let running = false;
 let watching = false;    // ¿servicio de ubicación en 2º plano activo?
@@ -23,14 +26,41 @@ export async function startEngine() {
   if (running) return;
   running = true;
   batteryTimer = setInterval(() => evaluateAll('battery'), 20000);
+  climaTimer = setInterval(climaCheck, 60000);
   await syncWatchers();
   evaluateAll('init');
+  climaCheck();
 }
 
 export function stopEngine() {
   running = false;
   if (batteryTimer) { clearInterval(batteryTimer); batteryTimer = null; }
+  if (climaTimer) { clearInterval(climaTimer); climaTimer = null; }
   bggeo.stop(); watching = false;
+}
+
+/* ---------- Automatización de clima ---------- */
+export function getClimaConfig() { return prefs.get('climaAuto', { enabled: false, everyHours: 1 }); }
+export function setClimaConfig(cfg) {
+  prefs.set('climaAuto', cfg);
+  if (cfg.enabled) prefs.set('climaLast', 0); // fuerza un envío pronto
+  syncWatchers();
+}
+export async function climaCheck() {
+  const c = getClimaConfig();
+  if (!c.enabled) return;
+  const last = prefs.get('climaLast', 0);
+  if (Date.now() - last < (c.everyHours || 1) * 3600000) return;
+  prefs.set('climaLast', Date.now());
+  try {
+    const s = summarize(await getCurrentWeather());
+    notify('🌦️ Clima', s.text, { channelId: 'inf_default' });
+  } catch (_) { /* sin señal: se reintenta al próximo tick */ }
+}
+// Envía el clima ahora mismo (para el botón "Probar").
+export async function fireClimaNow() {
+  try { const s = summarize(await getCurrentWeather()); notify('🌦️ Clima', s.text, { channelId: 'inf_default' }); return s.text; }
+  catch (_) { return null; }
 }
 
 // Enciende el servicio de ubicación en 2º plano solo si hay alguna
@@ -40,8 +70,10 @@ export async function syncWatchers() {
   let rules = [];
   try { rules = await db.getAll('automatizaciones'); } catch (_) {}
   const needsLocation = rules.some((r) => r.enabled && r.conditions && r.conditions.location && r.conditions.location.lat != null);
+  // El clima también necesita mantener la app viva en 2º plano.
+  const needsAlive = needsLocation || getClimaConfig().enabled;
 
-  if (needsLocation && !watching) {
+  if (needsAlive && !watching) {
     watching = true;
     try {
       await bggeo.start(
@@ -49,7 +81,7 @@ export async function syncWatchers() {
         (err) => console.warn('[bggeo]', err)
       );
     } catch (e) { watching = false; console.warn('[engine] no se pudo iniciar bg geo', e); }
-  } else if (!needsLocation && watching) {
+  } else if (!needsAlive && watching) {
     await bggeo.stop(); watching = false;
   }
 }

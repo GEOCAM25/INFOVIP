@@ -9,7 +9,7 @@ import { db } from '../core/db.js';
 import { geo, device } from '../core/native.js';
 import { pinCrypto } from '../core/crypto.js';
 import { extractAudioFromVideo } from '../core/audioTools.js';
-import { startEngine, engineStatus, syncWatchers, watchingLocation, backgroundCapable, VIBRATIONS } from './engine.js';
+import { startEngine, engineStatus, syncWatchers, watchingLocation, backgroundCapable, VIBRATIONS, getClimaConfig, setClimaConfig, fireClimaNow } from './engine.js';
 
 // 5 sonidos integrados (archivos en assets/sounds y res/raw)
 const SOUNDS = [
@@ -39,6 +39,9 @@ async function render(root) {
   } else if (!backgroundCapable()) {
     root.appendChild(h('div', { class: 'chip warn', style: 'margin-bottom:12px' }, 'ℹ️ En 2º plano solo funciona bien instalando el APK'));
   }
+
+  // Tarjeta de automatización de CLIMA
+  root.appendChild(climaCard());
 
   const list = h('div');
   root.appendChild(list);
@@ -80,6 +83,23 @@ async function ruleCard(rule, root) {
       )
     )
   );
+  return card;
+}
+
+function climaCard() {
+  const c = getClimaConfig();
+  const card = h('div', { class: 'card' });
+  const sel = h('select', { class: 'select', style: 'width:auto' },
+    ...[1, 2, 3, 6, 12].map((n) => h('option', { value: String(n) }, `cada ${n} h`)));
+  sel.value = String(c.everyHours || 1);
+  sel.addEventListener('change', () => { const cfg = getClimaConfig(); cfg.everyHours = Number(sel.value); setClimaConfig(cfg); toast('Frecuencia actualizada'); });
+  const sw = toggle(c.enabled, (on) => { const cfg = getClimaConfig(); cfg.enabled = on; setClimaConfig(cfg); toast(on ? 'Clima activado' : 'Clima desactivado'); return true; });
+  card.appendChild(h('div', { class: 'row between' },
+    h('div', {}, h('h3', { style: 'margin:0' }, '🌦️ Clima por horas'), h('div', { class: 'muted' }, 'Notificación con el clima de tu ubicación.')),
+    sw));
+  card.appendChild(h('div', { class: 'row between', style: 'margin-top:10px' }, h('span', { class: 'muted' }, 'Frecuencia'), sel));
+  card.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-top:12px', onClick: async () => { toast('Consultando clima…'); const t = await fireClimaNow(); toast(t ? '🌦️ ' + t : 'Sin señal / permiso de ubicación'); } }, '▶️ Probar ahora'));
+  card.appendChild(h('div', { class: 'hint' }, 'Con pantalla apagada mantiene el servicio activo (notificación “INFOVIP activo”) y usa tu ubicación.'));
   return card;
 }
 

@@ -38,6 +38,7 @@ const CORE_ASSETS = [
   './js/core/permissions.js',
   './js/core/bggeo.js',
   './js/core/appupdate.js',
+  './js/core/weather.js',
   './js/modules/sellos.js',
   './js/modules/rendicion.js',
   './js/modules/automatizaciones.js',
