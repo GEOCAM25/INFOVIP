@@ -54,6 +54,24 @@ export function openSettings() {
 
     body.appendChild(h('div', { class: 'divider' }));
 
+    // --- Permisos ---
+    body.appendChild(section('Permisos', 'Ubicación y notificaciones para las alarmas.'));
+    const permInfo = h('div', { class: 'hint', style: 'margin-bottom:10px' }, 'Revisando…');
+    body.appendChild(permInfo);
+    import('../core/permissions.js').then(async ({ checkStatus, requestAll, backgroundLocationHint }) => {
+      const s = await checkStatus();
+      const fmt = (v) => v === 'granted' ? '✅' : v === 'denied' ? '⛔' : '❔';
+      permInfo.innerHTML = `📍 Ubicación: ${fmt(s.location)} &nbsp;·&nbsp; 🔔 Notificaciones: ${fmt(s.notifications)}<br><span style="opacity:.8">${backgroundLocationHint()}</span>`;
+      body.appendChild(h('button', { class: 'btn ghost sm', onClick: async () => {
+        const r = await requestAll();
+        toast(r.location === 'granted' ? 'Permisos actualizados' : 'Revisa los ajustes de Android');
+        const s2 = await checkStatus();
+        permInfo.innerHTML = `📍 Ubicación: ${fmt(s2.location)} &nbsp;·&nbsp; 🔔 Notificaciones: ${fmt(s2.notifications)}`;
+      } }, '🔓  Solicitar permisos'));
+    });
+
+    body.appendChild(h('div', { class: 'divider' }));
+
     // --- Info app / actualización ---
     body.appendChild(section('Aplicación', 'Datos locales y actualización.'));
     body.appendChild(h('button', { class: 'btn ghost', onClick: () => {

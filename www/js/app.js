@@ -7,6 +7,9 @@ import { go } from './core/router.js';
 import { getHome } from './core/tabs.js';
 import { initServiceWorker } from './core/update.js';
 import { openSettings } from './modules/config.js';
+import { prefs, KEYS } from './core/store.js';
+import { h, sheet, toast } from './core/ui.js';
+import { requestAll, backgroundLocationHint } from './core/permissions.js';
 
 // Importar los módulos registra sus rutas (efecto de carga).
 import './modules/inicio.js';
@@ -49,6 +52,27 @@ async function boot() {
 
   // Pequeño respiro para que se pinte la primera vista antes de ocultar splash.
   setTimeout(showApp, 500);
+
+  // Primer arranque: pedir permisos con una explicación clara.
+  if (!prefs.get(KEYS.ONBOARDED, false)) setTimeout(onboarding, 1100);
+}
+
+function onboarding() {
+  sheet('Bienvenido a INFOVIP', (body, api) => {
+    body.appendChild(h('p', { class: 'muted', style: 'margin:0 0 8px' }, 'Para que las automatizaciones y alarmas funcionen, INFOVIP necesita tu permiso para:'));
+    body.appendChild(h('div', { class: 'setting-row' }, h('div', { class: 'sr-main' }, h('div', { class: 'sr-title' }, '📍 Ubicación'), h('div', { class: 'sr-desc' }, 'Disparar alarmas al llegar a un punto (radio en metros).'))));
+    body.appendChild(h('div', { class: 'setting-row' }, h('div', { class: 'sr-main' }, h('div', { class: 'sr-title' }, '🔔 Notificaciones'), h('div', { class: 'sr-desc' }, 'Avisarte aunque la app esté cerrada o en segundo plano.'))));
+    body.appendChild(h('div', { class: 'hint', style: 'margin:10px 0 16px' }, backgroundLocationHint()));
+    body.appendChild(h('div', { class: 'btn-row' },
+      h('button', { class: 'btn ghost', onClick: () => { prefs.set(KEYS.ONBOARDED, true); api.close(); } }, 'Ahora no'),
+      h('button', { class: 'btn primary', onClick: async () => {
+        const r = await requestAll();
+        prefs.set(KEYS.ONBOARDED, true);
+        api.close();
+        toast(r.location === 'granted' ? '✅ Permisos concedidos' : 'Puedes activarlos luego en Ajustes');
+      } }, 'Conceder permisos')
+    ));
+  }, 'Todo se guarda solo en tu teléfono.');
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

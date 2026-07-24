@@ -8,6 +8,7 @@
 import { db } from '../core/db.js';
 import { geo, device, haptics, distanceMeters } from '../core/native.js';
 import { toast } from '../core/ui.js';
+import { notify } from '../core/permissions.js';
 
 let stopGeo = null;
 let batteryTimer = null;
@@ -91,7 +92,17 @@ async function fire(rule) {
       }
     } catch (_) {}
   }
+  // Notificación local: llega aunque la app esté en segundo plano.
+  notify('⚡ ' + (rule.name || 'Automatización'), describeFire(rule));
   toast(`⚡ ${rule.name}`);
+}
+
+function describeFire(rule) {
+  const c = rule.conditions || {};
+  const parts = [];
+  if (c.location) parts.push('llegaste a la ubicación');
+  if (c.battery) parts.push(`batería ${c.battery.op === 'lt' ? '<' : '>'} ${c.battery.value}%`);
+  return 'Se cumplió: ' + (parts.join(' y ') || 'condición');
 }
 
 export function engineStatus() { return running; }

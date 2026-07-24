@@ -14,9 +14,32 @@ if (!existsSync(manifestPath)) {
 }
 
 let xml = readFileSync(manifestPath, 'utf8');
+let changed = false;
 
+/* ---- 1) Permisos del teléfono ---- */
+const PERMISSIONS = [
+  'android.permission.INTERNET',
+  'android.permission.ACCESS_COARSE_LOCATION',
+  'android.permission.ACCESS_FINE_LOCATION',
+  'android.permission.ACCESS_BACKGROUND_LOCATION', // ubicación con pantalla apagada
+  'android.permission.POST_NOTIFICATIONS',         // notificaciones (Android 13+)
+  'android.permission.VIBRATE',
+  'android.permission.WAKE_LOCK'
+];
+const permLines = PERMISSIONS
+  .filter((p) => !xml.includes(`android:name="${p}"`))
+  .map((p) => `    <uses-permission android:name="${p}" />`)
+  .join('\n');
+if (permLines) {
+  xml = xml.replace(/<application/, permLines + '\n\n    <application');
+  changed = true;
+  console.log('[patch-android] Permisos agregados al manifest ✓');
+}
+
+/* ---- 2) Deep-link del login Microsoft ---- */
 if (xml.includes('com.infovip.app')) {
-  console.log('[patch-android] Deep-link ya presente, nada que hacer.');
+  if (changed) writeFileSync(manifestPath, xml);
+  console.log('[patch-android] Deep-link ya presente.');
   process.exit(0);
 }
 

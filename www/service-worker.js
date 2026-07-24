@@ -29,6 +29,7 @@ const CORE_ASSETS = [
   './js/core/audioTools.js',
   './js/core/msauth.js',
   './js/core/graph.js',
+  './js/core/permissions.js',
   './js/modules/sellos.js',
   './js/modules/rendicion.js',
   './js/modules/automatizaciones.js',
