@@ -77,11 +77,19 @@ export function openSettings() {
     const updBtn = h('button', { class: 'btn ghost', onClick: async () => {
       updBtn.textContent = 'Buscando…';
       try {
-        const { checkUpdate, showUpdateBanner } = await import('../core/appupdate.js');
+        const { checkUpdate, showUpdateBanner, openInstall } = await import('../core/appupdate.js');
         const u = await checkUpdate();
         if (!u || u.error) toast(u && u.error === 'timeout' ? 'Sin respuesta (revisa internet)' : 'No se pudo consultar (' + ((u && u.error) || 'red') + ')');
         else if (u.upToDate) toast(`✅ Estás al día (build-${u.current})`);
-        else { showUpdateBanner(u); toast(`Disponible build-${u.build} · toca “Actualizar app”`); }
+        else {
+          showUpdateBanner(u);
+          // Botón de actualizar AQUÍ MISMO en Ajustes (además del banner inferior)
+          let inline = document.getElementById('inline-update-btn');
+          if (!inline) { inline = h('button', { id: 'inline-update-btn', class: 'btn primary', style: 'margin-top:8px' }); updBtn.after(inline); }
+          inline.textContent = `⬇️  Actualizar a build-${u.build}`;
+          inline.onclick = () => openInstall(u.url);
+          toast(`Disponible build-${u.build}`);
+        }
       } catch (e) { toast('Error al buscar actualización'); }
       finally { updBtn.textContent = '🔄  Buscar actualización'; }
     } }, '🔄  Buscar actualización');
