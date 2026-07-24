@@ -148,7 +148,7 @@ async function openViewer(plano) {
     }
   });
 
-  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) startDist = 0; };
+  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) { startDist = 0; scheduleQuality(); } };
   stage.addEventListener('pointerup', up);
   stage.addEventListener('pointercancel', up);
   // Rueda del mouse (para pruebas en escritorio)
@@ -157,55 +157,73 @@ async function openViewer(plano) {
     const r = rect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
     const ns = Math.min(6, Math.max(minScale, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
     tx = mx - (mx - tx) * (ns / scale); ty = my - (my - ty) * (ns / scale);
-    scale = ns; apply();
+    scale = ns; apply(); scheduleQuality();
   }, { passive: false });
 
-  // Estado de capas (OCG)
+  // Estado de capas (OCG) + calidad adaptativa
   const pages = [];
   let ocConfig = null;
   let rendering = false;
+  let infoBase = '';
   const lockKey = 'planoLocks:' + (plano.id ?? plano.name);
 
-  async function renderPageInto(entry) {
-    const params = { canvasContext: entry.canvas.getContext('2d', { alpha: false }), viewport: entry.vp };
-    // pdf.js espera una PROMESA con la config de capas.
+  // Calidad: buena resolución base + MÁS resolución al hacer zoom (re-render
+  // nítido). No forzamos baja calidad en gama baja; solo limitamos el máximo.
+  const mem = navigator.deviceMemory || 4;
+  const lowEnd = mem <= 2;
+  const basePR = Math.min(window.devicePixelRatio || 1, lowEnd ? 2 : 3); // nitidez base
+  const MAX_CANVAS = lowEnd ? 3200 : 6000;                               // tope px por lado
+  let currentPR = basePR, qTimer = null;
+
+  async function renderEntry(entry, pr) {
+    const scaleR = (entry.cssWidth * pr) / entry.base.width;
+    const vp = entry.page.getViewport({ scale: scaleR });
+    entry.canvas.width = Math.round(vp.width);
+    entry.canvas.height = Math.round(vp.height);
+    entry.canvas.style.width = entry.cssWidth + 'px';
+    entry.canvas.style.height = 'auto';
+    const params = { canvasContext: entry.canvas.getContext('2d', { alpha: false }), viewport: vp };
     if (ocConfig) params.optionalContentConfigPromise = Promise.resolve(ocConfig);
     await entry.page.render(params).promise;
   }
-  async function renderAll() {
+  async function renderAll(pr = currentPR) {
     if (rendering) return; rendering = true;
-    try { for (const e of pages) await renderPageInto(e); } finally { rendering = false; }
+    try { for (const e of pages) await renderEntry(e, pr); } finally { rendering = false; }
     applyDark();
   }
+  // Al soltar el zoom, re-renderiza más nítido si hace falta (debounce).
+  function scheduleQuality() {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(async () => {
+      if (!pages[0]) return;
+      const maxPR = MAX_CANVAS / pages[0].cssWidth;
+      const desired = Math.max(basePR, Math.min(basePR * scale, maxPR));
+      if (desired > currentPR * 1.15 && !rendering) {
+        currentPR = desired; info.textContent = 'Mejorando calidad…';
+        await renderAll(currentPR); info.textContent = infoBase;
+      }
+    }, 240);
+  }
 
-  // Render inicial (una vez, a resolución nítida con tope de memoria por gama)
+  // Render inicial
   try {
     const lib = await loadPdfJs();
     const buf = await plano.blob.arrayBuffer();
     doc = await lib.getDocument({ data: buf }).promise;
-    const mem = navigator.deviceMemory || 4;
-    const lowEnd = mem <= 2;
-    const dpr = Math.min(window.devicePixelRatio || 1, lowEnd ? 1 : 2);
-    const MAXW = lowEnd ? 1700 : 2600;
     ocConfig = await doc.getOptionalContentConfig().catch(() => null);
+    const targetCss = stage.clientWidth - 8;
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
-      const targetCss = stage.clientWidth - 8;
-      let renderScale = (targetCss * dpr) / base.width;
-      if (base.width * renderScale > MAXW) renderScale = MAXW / base.width;
-      const vp = page.getViewport({ scale: renderScale });
       const canvas = h('canvas');
-      canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
-      canvas.style.width = Math.round(vp.width / dpr) + 'px';
-      canvas.style.height = 'auto';
       layer.appendChild(canvas);
-      const entry = { page, canvas, vp };
+      const entry = { page, canvas, base, cssWidth: targetCss };
       pages.push(entry);
-      await renderPageInto(entry);
+      await renderEntry(entry, basePR);
       info.textContent = `Página ${n}/${doc.numPages}`;
     }
-    info.textContent = `${doc.numPages} pág.`;
+    infoBase = `${doc.numPages} pág.`;
+    info.textContent = infoBase;
     applyDark(); fit();
 
     // Detectar capas y aplicar candados guardados
@@ -214,8 +232,9 @@ async function openViewer(plano) {
     if (ids.length) {
       const locked = new Set((prefs.get(lockKey, []) || []).filter((id) => ids.includes(id)));
       btnLayers.hidden = false;
-      info.textContent = `${doc.numPages} pág. · ${ids.length} capas`;
-      btnLayers.addEventListener('click', () => openLayers(groups, ids, locked, renderAll));
+      infoBase = `${doc.numPages} pág. · ${ids.length} capas`;
+      info.textContent = infoBase;
+      btnLayers.addEventListener('click', () => openLayers(groups, ids, locked, () => renderAll()));
     }
   } catch (e) {
     layer.appendChild(emptyState('⚠️', 'No se pudo renderizar el PDF.'));
