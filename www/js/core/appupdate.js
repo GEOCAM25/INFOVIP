@@ -3,8 +3,6 @@
    Consulta los Releases de GitHub. Si hay un build más nuevo que
    el instalado, ofrece "Actualizar app": descarga el APK firmado
    (misma llave) y el usuario lo instala encima, sin desinstalar.
-   Nota: el APK de Capacitor carga sus archivos localmente, por eso
-   la actualización real va por el APK (native + web juntos).
    ============================================================ */
 const OWNER = 'GEOCAM25';
 const REPO = 'INFOVIP';
@@ -20,12 +18,22 @@ export async function currentBuild() {
   return _current;
 }
 
-// Devuelve { build, url, current, upToDate } o null si no se pudo consultar.
+// Consulta con timeout para no quedar colgado si no hay respuesta.
+async function fetchWithTimeout(url, opts = {}, ms = 8000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+
+// Devuelve { build, url, current, upToDate } o { error } si no se pudo.
 export async function checkUpdate() {
   try {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`,
-      { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
-    if (!res.ok) return null;
+    const res = await fetchWithTimeout(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'INFOVIP-App' },
+      cache: 'no-store'
+    }, 8000);
+    if (!res.ok) return { error: 'HTTP ' + res.status };
     const rel = await res.json();
     const m = (rel.tag_name || '').match(/build-(\d+)/);
     const latest = m ? Number(m[1]) : 0;
@@ -38,7 +46,9 @@ export async function checkUpdate() {
       notes: rel.body || '',
       upToDate: latest <= cur || !asset
     };
-  } catch (_) { return null; }
+  } catch (e) {
+    return { error: (e && e.name === 'AbortError') ? 'timeout' : 'red' };
+  }
 }
 
 export async function openInstall(url) {
@@ -46,4 +56,16 @@ export async function openInstall(url) {
   const Browser = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.Browser : null;
   if (Browser) { try { await Browser.open({ url }); return; } catch (_) {} }
   window.open(url, '_blank');
+}
+
+// Muestra el banner "Actualizar app" (módulo estable, sin depender de app.js).
+export function showUpdateBanner(u) {
+  const toastEl = document.getElementById('update-toast');
+  const btn = document.getElementById('btn-update-now');
+  if (!toastEl || !btn) return;
+  const span = toastEl.querySelector('span');
+  if (span) span.textContent = `🔄 Nueva versión disponible (build-${u.build})`;
+  toastEl.hidden = false;
+  btn.textContent = 'Actualizar app';
+  btn.onclick = () => { openInstall(u.url); toastEl.hidden = true; };
 }

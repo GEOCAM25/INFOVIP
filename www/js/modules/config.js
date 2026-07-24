@@ -76,13 +76,14 @@ export function openSettings() {
     body.appendChild(section('Aplicación', 'Datos locales y actualización.'));
     const updBtn = h('button', { class: 'btn ghost', onClick: async () => {
       updBtn.textContent = 'Buscando…';
-      const { checkUpdate } = await import('../core/appupdate.js');
-      const u = await checkUpdate();
-      updBtn.textContent = '🔄  Buscar actualización';
-      if (!u) return toast('Sin conexión o no se pudo consultar');
-      if (u.upToDate) return toast(`Estás al día (build-${u.current})`);
-      const { showUpdateBanner } = await import('../app.js');
-      showUpdateBanner(u); toast(`Disponible build-${u.build}`);
+      try {
+        const { checkUpdate, showUpdateBanner } = await import('../core/appupdate.js');
+        const u = await checkUpdate();
+        if (!u || u.error) toast(u && u.error === 'timeout' ? 'Sin respuesta (revisa internet)' : 'No se pudo consultar (' + ((u && u.error) || 'red') + ')');
+        else if (u.upToDate) toast(`✅ Estás al día (build-${u.current})`);
+        else { showUpdateBanner(u); toast(`Disponible build-${u.build} · toca “Actualizar app”`); }
+      } catch (e) { toast('Error al buscar actualización'); }
+      finally { updBtn.textContent = '🔄  Buscar actualización'; }
     } }, '🔄  Buscar actualización');
     body.appendChild(updBtn);
     import('../core/appupdate.js').then(async ({ currentBuild }) => {

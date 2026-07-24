@@ -10,7 +10,7 @@ import { openSettings } from './modules/config.js';
 import { prefs, KEYS } from './core/store.js';
 import { h, sheet, toast } from './core/ui.js';
 import { requestAll, backgroundLocationHint } from './core/permissions.js';
-import { checkUpdate, openInstall } from './core/appupdate.js';
+import { checkUpdate, showUpdateBanner } from './core/appupdate.js';
 
 // Importar los módulos registra sus rutas (efecto de carga).
 import './modules/inicio.js';
@@ -64,18 +64,8 @@ async function boot() {
   // Buscar actualización de la app (release nuevo en GitHub).
   if (navigator.onLine) setTimeout(async () => {
     const u = await checkUpdate();
-    if (u && !u.upToDate && u.url) showUpdateBanner(u);
+    if (u && !u.error && !u.upToDate && u.url) showUpdateBanner(u);
   }, 2500);
-}
-
-export function showUpdateBanner(u) {
-  const toastEl = document.getElementById('update-toast');
-  const btn = document.getElementById('btn-update-now');
-  if (!toastEl || !btn) return;
-  toastEl.querySelector('span').textContent = `🔄 Nueva versión disponible (build-${u.build})`;
-  toastEl.hidden = false;
-  btn.textContent = 'Actualizar app';
-  btn.onclick = () => { openInstall(u.url); toastEl.hidden = true; };
 }
 
 function onboarding() {
