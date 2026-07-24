@@ -13,6 +13,7 @@
     "stamp": "node scripts/stamp-version.mjs"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.23",
     "@capacitor/android": "^6.1.2",
     "@capacitor/app": "^6.0.2",
     "@capacitor/browser": "^6.0.5",

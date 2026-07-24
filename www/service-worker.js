@@ -30,6 +30,7 @@ const CORE_ASSETS = [
   './js/core/msauth.js',
   './js/core/graph.js',
   './js/core/permissions.js',
+  './js/core/bggeo.js',
   './js/modules/sellos.js',
   './js/modules/rendicion.js',
   './js/modules/automatizaciones.js',

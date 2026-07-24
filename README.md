@@ -112,6 +112,20 @@ Carpeta configurada por defecto (editable en Ajustes → SharePoint):
 > qué archivo/fila escribiría, sin tocar SharePoint). El acceso lo controla
 > Microsoft: solo usuarios con permiso podrán escribir.
 
+## 📍 Alarmas en segundo plano (pantalla apagada)
+
+Las automatizaciones por ubicación usan
+`@capacitor-community/background-geolocation`, que corre un **servicio en
+primer plano** (con notificación persistente "INFOVIP activo") para mantener el
+GPS vivo aunque la app esté cerrada o el teléfono bloqueado. El servicio se
+enciende **solo si hay alguna alarma activa con condición de ubicación** y se
+apaga cuando no. Al dispararse, la alarma emite una **notificación local** (con
+sonido/vibración) que llega aunque la app esté en segundo plano.
+
+Para que funcione con la pantalla apagada, Android pedirá **"Permitir siempre"**
+la ubicación; conviene además **desactivar la optimización de batería** para
+INFOVIP (Ajustes de Android → Batería).
+
 ## 🔐 Permisos Android
 
 Capacitor añade los permisos de **ubicación** (GPS en primer plano/segundo

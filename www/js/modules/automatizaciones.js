@@ -9,7 +9,7 @@ import { db } from '../core/db.js';
 import { geo, device } from '../core/native.js';
 import { pinCrypto } from '../core/crypto.js';
 import { extractAudioFromVideo } from '../core/audioTools.js';
-import { startEngine, engineStatus } from './engine.js';
+import { startEngine, engineStatus, syncWatchers, watchingLocation, backgroundCapable } from './engine.js';
 
 async function render(root) {
   clear(root);
@@ -20,6 +20,13 @@ async function render(root) {
     h('span', { class: `chip ${engineStatus() ? 'ok' : 'warn'}` }, engineStatus() ? '● Motor activo' : '○ Inactivo')
   ));
   root.appendChild(h('div', { class: 'page-sub' }, 'Reglas SI/ENTONCES con ubicación, batería, audio y vibración.'));
+
+  // Estado de la vigilancia en segundo plano
+  if (watchingLocation()) {
+    root.appendChild(h('div', { class: 'chip ok', style: 'margin-bottom:12px' }, '📍 Vigilando ubicación en 2º plano (pantalla apagada)'));
+  } else if (!backgroundCapable()) {
+    root.appendChild(h('div', { class: 'chip warn', style: 'margin-bottom:12px' }, 'ℹ️ En 2º plano solo funciona bien instalando el APK'));
+  }
 
   const list = h('div');
   root.appendChild(list);
@@ -47,6 +54,7 @@ async function ruleCard(rule, root) {
       toggle(rule.enabled, async (on) => {
         if (locked && !(await unlock(rule))) return false;
         rule.enabled = on; await db.put('automatizaciones', rule);
+        await syncWatchers();
         toast(on ? 'Activada' : 'Desactivada'); return true;
       }),
       h('div', { class: 'btn-row', style: 'width:auto' },
@@ -54,7 +62,7 @@ async function ruleCard(rule, root) {
         h('button', { class: 'btn danger sm', onClick: async () => {
           if (locked && !(await unlock(rule))) return;
           if (await confirmSheet('Eliminar', `¿Borrar "${rule.name}"?`, { okText: 'Eliminar', danger: true })) {
-            await db.delete('automatizaciones', rule.id); toast('Eliminada'); render(root);
+            await db.delete('automatizaciones', rule.id); await syncWatchers(); toast('Eliminada'); render(root);
           }
         } }, '🗑')
       )
@@ -185,6 +193,7 @@ function openEditor(root, existing) {
       if (!rule.conditions.location && !rule.conditions.battery) return toast('Define al menos una condición');
       if (existing) await db.put('automatizaciones', rule);
       else { delete rule.id; await db.add('automatizaciones', rule); }
+      await syncWatchers();
       api.close(); toast('Guardada'); render(root);
     } }, existing ? 'Guardar cambios' : 'Crear automatización'));
   }, 'Todo se guarda cifrado/local en tu teléfono.');

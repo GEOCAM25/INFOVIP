@@ -24,7 +24,9 @@ const PERMISSIONS = [
   'android.permission.ACCESS_BACKGROUND_LOCATION', // ubicación con pantalla apagada
   'android.permission.POST_NOTIFICATIONS',         // notificaciones (Android 13+)
   'android.permission.VIBRATE',
-  'android.permission.WAKE_LOCK'
+  'android.permission.WAKE_LOCK',
+  'android.permission.FOREGROUND_SERVICE',          // servicio en 2º plano (alarmas)
+  'android.permission.FOREGROUND_SERVICE_LOCATION'  // ubicación en 2º plano (Android 14+)
 ];
 const permLines = PERMISSIONS
   .filter((p) => !xml.includes(`android:name="${p}"`))

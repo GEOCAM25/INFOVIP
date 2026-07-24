@@ -6,14 +6,15 @@
    apoyándose en los watchers nativos de Capacitor.
    ============================================================ */
 import { db } from '../core/db.js';
-import { geo, device, haptics, distanceMeters } from '../core/native.js';
+import { device, haptics, distanceMeters } from '../core/native.js';
 import { toast } from '../core/ui.js';
 import { notify } from '../core/permissions.js';
+import * as bggeo from '../core/bggeo.js';
 
-let stopGeo = null;
 let batteryTimer = null;
 let lastPos = null;
 let running = false;
+let watching = false;    // ¿servicio de ubicación en 2º plano activo?
 const firedCooldown = new Map(); // id -> timestamp del último disparo
 
 const COOLDOWN_MS = 60 * 1000; // no re-disparar la misma regla dentro de 1 min
@@ -21,17 +22,36 @@ const COOLDOWN_MS = 60 * 1000; // no re-disparar la misma regla dentro de 1 min
 export async function startEngine() {
   if (running) return;
   running = true;
-  try {
-    stopGeo = await geo.watch((pos) => { lastPos = pos; evaluateAll('geo'); });
-  } catch (_) {}
   batteryTimer = setInterval(() => evaluateAll('battery'), 20000);
+  await syncWatchers();
   evaluateAll('init');
 }
 
 export function stopEngine() {
   running = false;
-  if (stopGeo) { stopGeo(); stopGeo = null; }
   if (batteryTimer) { clearInterval(batteryTimer); batteryTimer = null; }
+  bggeo.stop(); watching = false;
+}
+
+// Enciende el servicio de ubicación en 2º plano solo si hay alguna
+// automatización activa con condición de ubicación (evita la notificación
+// persistente cuando no hace falta). Llamar tras crear/editar reglas.
+export async function syncWatchers() {
+  let rules = [];
+  try { rules = await db.getAll('automatizaciones'); } catch (_) {}
+  const needsLocation = rules.some((r) => r.enabled && r.conditions && r.conditions.location && r.conditions.location.lat != null);
+
+  if (needsLocation && !watching) {
+    watching = true;
+    try {
+      await bggeo.start(
+        (pos) => { lastPos = pos; evaluateAll('geo'); },
+        (err) => console.warn('[bggeo]', err)
+      );
+    } catch (e) { watching = false; console.warn('[engine] no se pudo iniciar bg geo', e); }
+  } else if (!needsLocation && watching) {
+    await bggeo.stop(); watching = false;
+  }
 }
 
 async function evaluateAll(source) {
@@ -106,3 +126,5 @@ function describeFire(rule) {
 }
 
 export function engineStatus() { return running; }
+export function watchingLocation() { return watching; }
+export function backgroundCapable() { return bggeo.hasBackground(); }
