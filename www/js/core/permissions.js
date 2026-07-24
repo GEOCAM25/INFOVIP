@@ -74,7 +74,7 @@ export async function notify(title, body) {
   if (LocalNotifications && LocalNotifications.schedule) {
     try {
       await LocalNotifications.schedule({
-        notifications: [{ id: _notifId++, title, body, schedule: { at: new Date(Date.now() + 200) }, smallIcon: 'ic_stat_icon' }]
+        notifications: [{ id: _notifId++, title, body, schedule: { at: new Date(Date.now() + 200) } }]
       });
       return true;
     } catch (_) {}

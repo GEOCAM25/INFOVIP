@@ -45,6 +45,9 @@ jobs:
       - name: Patch Android manifest (deep-link login)
         run: node scripts/patch-android.mjs
 
+      - name: Generate app icon & splash (from assets/ logo)
+        run: npx @capacitor/assets generate --android --iconBackgroundColor '#0a1930' --iconBackgroundColorDark '#0a1930' --splashBackgroundColor '#060d1c' --splashBackgroundColorDark '#060d1c'
+
       - name: Sync web assets into Android
         run: npx cap sync android
 
