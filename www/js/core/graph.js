@@ -112,28 +112,57 @@ async function writeCell(itemId, col, row, value) {
   });
 }
 
-/* ---------- Flujo completo: rendir un sello ---------- */
-// data = { seal, rol, color, cargo, condicion, posicion, retiroNum, retiroColor, otc, fecha, motivo }
-export async function rendirSello(data, onStep) {
-  const step = (m) => onStep && onStep(m);
-  step('Buscando el archivo del sello…');
-  const found = await findFileForSeal(data.seal);
-  if (!found) throw new Error(`Ningún Excel de la carpeta cubre el sello ${data.seal}`);
-  step(`Archivo: ${found.item.name}. Ubicando la fila…`);
-  const row = await findSealRow(found.item.id, data.seal, found.range);
-  if (!row) throw new Error('No se encontró la fila del sello en el archivo');
-  step(`Fila ${row}. Escribiendo datos…`);
+/* ---------- Ubicar un sello (archivo + fila) ---------- */
+export async function locateSeal(seal) {
+  const found = await findFileForSeal(seal);
+  if (!found) throw new Error(`Ningún Excel de la carpeta cubre el sello ${seal}`);
+  const row = await findSealRow(found.item.id, seal, found.range);
+  if (!row) throw new Error(`No se encontró la fila del sello ${seal}`);
+  return { itemId: found.item.id, file: found.item.name, row };
+}
+
+// Lee el CARGO ya escrito en la fila de un sello (para autocompletar).
+export async function readCargo(seal) {
+  try {
+    const loc = await locateSeal(seal);
+    const c = spConfig();
+    const ws = encodeURIComponent(c.worksheet);
+    const { driveId } = await context();
+    const rng = await api(`/drives/${driveId}/items/${loc.itemId}/workbook/worksheets('${ws}')/range(address='${c.columns.cargo}${loc.row}')?$select=values`);
+    const v = rng.values && rng.values[0] && rng.values[0][0];
+    return { cargo: v ? String(v).trim() : '', loc };
+  } catch (_) { return { cargo: '', loc: null }; }
+}
+
+// Escribe una fila (un sello) con los campos dados. color = siempre CAFÉ.
+async function writeRow(itemId, row, d) {
   const cols = spConfig().columns;
-  // Escribimos solo lo que llena el usuario; medidor/dirección se autocompletan por fórmula.
   const map = [
-    [cols.rol, data.rol], [cols.color, data.color], [cols.cargo, data.cargo],
-    [cols.condicion, data.condicion], [cols.posicion, data.posicion],
-    [cols.retiroNum, data.retiroNum], [cols.retiroColor, data.retiroColor],
-    [cols.otc, data.otc], [cols.fecha, data.fecha], [cols.motivo, data.motivo]
+    [cols.rol, d.rol], [cols.color, 'CAFÉ'], [cols.cargo, d.cargo],
+    [cols.condicion, d.condicion], [cols.posicion, d.posicion],
+    [cols.retiroNum, d.retiroNum], [cols.retiroColor, d.retiroColor],
+    [cols.otc, d.otc], [cols.fecha, d.fecha], [cols.motivo, d.motivo]
   ];
-  for (const [col, val] of map) { if (col && val) await writeCell(found.item.id, col, row, val); }
+  for (const [col, val] of map) { if (col && val != null && val !== '') await writeCell(itemId, col, row, val); }
+}
+
+/* ---------- Rendir uno o varios sellos ----------
+   base    = { rol, cargo, condicion, otc, motivo, fecha }  (datos compartidos)
+   entries = [ { seal, posicion, retiroNum, retiroColor }, ... ] (uno por fila)
+   Todos comparten dirección/OTC/motivo; cambian posición y sello retirado. */
+export async function rendir(base, entries, onStep) {
+  const step = (m) => onStep && onStep(m);
+  const done = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    step(`Sello ${e.seal}: buscando archivo…`);
+    const loc = await locateSeal(e.seal);
+    step(`Sello ${e.seal}: escribiendo en ${loc.file} fila ${loc.row}…`);
+    await writeRow(loc.itemId, loc.row, { ...base, ...e });
+    done.push({ seal: e.seal, file: loc.file, row: loc.row });
+  }
   step('Guardado en SharePoint ✓');
-  return { file: found.item.name, row };
+  return done;
 }
 
 /* ---------- Verificación de conexión ---------- */
