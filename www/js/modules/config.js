@@ -74,10 +74,21 @@ export function openSettings() {
 
     // --- Info app / actualización ---
     body.appendChild(section('Aplicación', 'Datos locales y actualización.'));
-    body.appendChild(h('button', { class: 'btn ghost', onClick: () => {
-      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then((r) => r && r.update());
-      toast('Buscando actualizaciones…');
-    } }, '🔄  Buscar actualización'));
+    const updBtn = h('button', { class: 'btn ghost', onClick: async () => {
+      updBtn.textContent = 'Buscando…';
+      const { checkUpdate } = await import('../core/appupdate.js');
+      const u = await checkUpdate();
+      updBtn.textContent = '🔄  Buscar actualización';
+      if (!u) return toast('Sin conexión o no se pudo consultar');
+      if (u.upToDate) return toast(`Estás al día (build-${u.current})`);
+      const { showUpdateBanner } = await import('../app.js');
+      showUpdateBanner(u); toast(`Disponible build-${u.build}`);
+    } }, '🔄  Buscar actualización');
+    body.appendChild(updBtn);
+    import('../core/appupdate.js').then(async ({ currentBuild }) => {
+      const b = await currentBuild();
+      body.appendChild(h('div', { class: 'hint' }, `Versión instalada: build-${b}. Las actualizaciones se instalan encima (misma firma), sin desinstalar.`));
+    });
     body.appendChild(h('div', { class: 'hint' }, 'Los datos (sellos, audios, planos, automatizaciones) se guardan solo en este teléfono.'));
   }, 'Personaliza INFOVIP a tu gusto.');
 }

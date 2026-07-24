@@ -163,8 +163,13 @@ async function openViewer(plano) {
     const lib = await loadPdfJs();
     const buf = await plano.blob.arrayBuffer();
     doc = await lib.getDocument({ data: buf }).promise;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const MAXW = 2600; // límite de píxeles por página (evita crash por memoria)
+    // Ajuste por gama del equipo: en teléfonos con poca RAM bajamos la
+    // resolución de render para no reventar memoria (sin perder nitidez
+    // en equipos capaces). deviceMemory ~ GB de RAM.
+    const mem = navigator.deviceMemory || 4;
+    const lowEnd = mem <= 2;
+    const dpr = Math.min(window.devicePixelRatio || 1, lowEnd ? 1 : 2);
+    const MAXW = lowEnd ? 1700 : 2600; // tope de píxeles por página
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
