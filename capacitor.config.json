@@ -14,6 +14,9 @@
     "SplashScreen": {
       "launchAutoHide": true,
       "backgroundColor": "#060d1c"
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   },
   "server": {

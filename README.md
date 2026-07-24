@@ -80,6 +80,38 @@ npm run android:build    # genera android/app/build/outputs/apk/debug/app-debug.
 npm run serve            # http://localhost:5173
 ```
 
+## 🧾 Rendición de sellos → escribir en SharePoint (Microsoft Graph)
+
+El módulo **Rendir** permite llenar lo mínimo de un sello y que la app **escriba
+sola** en el Excel correcto dentro de la carpeta de SharePoint. La app:
+
+1. Detecta el archivo por el rango del nombre (`15801_al_15850.xlsx`).
+2. Ubica la fila del sello (por su N°).
+3. Escribe ROL, color, cargo, condición y posición. **Medidor y dirección se
+   autocompletan** por la fórmula VLOOKUP del propio Excel.
+4. SharePoint guarda automáticamente (co-edición; el cambio sale a nombre del
+   usuario conectado).
+
+Carpeta configurada por defecto (editable en Ajustes → SharePoint):
+`eepachile.sharepoint.com/sites/Operaciones.EEPA` → `Documentos compartidos` →
+`CENTRO DE CONTROL/Registro de Sellos`.
+
+### Habilitación única en Azure/Entra (la hace un usuario con permiso o IT)
+
+1. Entra a **https://entra.microsoft.com** → **Registros de aplicaciones** → **Nuevo registro**.
+   - Nombre: `INFOVIP`. Cuentas: *Solo este directorio organizativo*.
+2. En **Autenticación → Agregar plataforma**:
+   - **Aplicaciones móviles y de escritorio** → URI de redirección personalizado: `com.infovip.app://auth`
+   - **Aplicación de página única (SPA)** → agrega tu URL web + `/redirect.html` (para probar en navegador).
+3. En **Permisos de API → Microsoft Graph → Delegados**: agrega **`Sites.ReadWrite.All`**
+   (y `offline_access`, `openid`, `profile`) → **Conceder consentimiento de administrador**.
+4. Copia el **Application (client) ID** y el **Directory (tenant) ID**.
+5. En la app: **Ajustes → SharePoint** → pega ambos → **Guardar** → en **Rendir** toca **Conectar Microsoft**.
+
+> Sin este registro, la app funciona en **modo simulación** (valida y muestra en
+> qué archivo/fila escribiría, sin tocar SharePoint). El acceso lo controla
+> Microsoft: solo usuarios con permiso podrán escribir.
+
 ## 🔐 Permisos Android
 
 Capacitor añade los permisos de **ubicación** (GPS en primer plano/segundo

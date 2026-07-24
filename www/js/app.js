@@ -11,6 +11,7 @@ import { openSettings } from './modules/config.js';
 // Importar los módulos registra sus rutas (efecto de carga).
 import './modules/inicio.js';
 import './modules/sellos.js';
+import './modules/rendicion.js';
 import './modules/automatizaciones.js';
 import './modules/planos.js';
 import './modules/clima.js';
@@ -41,7 +42,10 @@ async function boot() {
   // Arrancar el motor de automatizaciones en segundo plano (no bloquea UI).
   import('./modules/engine.js').then((m) => m.startEngine()).catch(() => {});
 
-  await go(getHome());
+  // Si volvemos de un login de Microsoft (redirect.html → #rendir), abrir esa pestaña.
+  const startTab = location.hash === '#rendir' ? 'rendir' : getHome();
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  await go(startTab);
 
   // Pequeño respiro para que se pinte la primera vista antes de ocultar splash.
   setTimeout(showApp, 500);

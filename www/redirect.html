@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>INFOVIP · Autenticando…</title>
+  <link rel="stylesheet" href="./css/theme.css" />
+</head>
+<body>
+  <div class="splash" style="position:fixed">
+    <img src="./assets/icons/logo.png" class="splash-logo" alt="INFOVIP" />
+    <div class="splash-bar"><span></span></div>
+    <p id="msg" style="color:#9db2d4;font-family:sans-serif;font-size:13px">Conectando con Microsoft…</p>
+  </div>
+  <script type="module">
+    import { prefs } from './js/core/store.js';
+    import { exchangeCode } from './js/core/msauth.js';
+    const msg = document.getElementById('msg');
+    (async () => {
+      try {
+        const p = new URLSearchParams(location.search);
+        const code = p.get('code');
+        const state = p.get('state');
+        const err = p.get('error_description') || p.get('error');
+        if (err) throw new Error(err);
+        const saved = prefs.get('msalPkce', {});
+        if (!code) throw new Error('No se recibió el código');
+        if (saved.state && state && saved.state !== state) throw new Error('Estado inválido (posible interferencia)');
+        await exchangeCode(code);
+        msg.textContent = '¡Listo! Volviendo a INFOVIP…';
+        location.replace('./index.html#rendir');
+      } catch (e) {
+        msg.textContent = 'Error: ' + (e.message || e);
+        setTimeout(() => location.replace('./index.html'), 3500);
+      }
+    })();
+  </script>
+</body>
+</html>

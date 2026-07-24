@@ -11,6 +11,7 @@ const CACHE_NAME = `infovip-cache-${CACHE_VERSION}`;
 const CORE_ASSETS = [
   './',
   './index.html',
+  './redirect.html',
   './manifest.webmanifest',
   './css/theme.css',
   './css/components.css',
@@ -26,7 +27,10 @@ const CORE_ASSETS = [
   './js/core/native.js',
   './js/core/crypto.js',
   './js/core/audioTools.js',
+  './js/core/msauth.js',
+  './js/core/graph.js',
   './js/modules/sellos.js',
+  './js/modules/rendicion.js',
   './js/modules/automatizaciones.js',
   './js/modules/engine.js',
   './js/modules/planos.js',

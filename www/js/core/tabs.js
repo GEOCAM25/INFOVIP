@@ -12,6 +12,7 @@ import { prefs, KEYS } from './store.js';
 export const REGISTRY = [
   { id: 'inicio',    name: 'Inicio',    icon: '🏠', fixedHome: false },
   { id: 'sellos',    name: 'Sellos',    icon: '🔖' },
+  { id: 'rendir',    name: 'Rendir',    icon: '📤' },
   { id: 'autos',     name: 'Alarmas',   icon: '⚡' },
   { id: 'planos',    name: 'Planos',    icon: '📐' },
   { id: 'clima',     name: 'Clima/SE',  icon: '🌦️' }

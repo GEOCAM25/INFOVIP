@@ -8,6 +8,7 @@
 import { h, sheet, toast } from '../core/ui.js';
 import { REGISTRY, getOrder, setOrder, getHidden, setHidden, getHome, setHome } from '../core/tabs.js';
 import { renderTabbar, go, currentId } from '../core/router.js';
+import { prefs } from '../core/store.js';
 
 export function openSettings() {
   sheet('Configuración', (body) => {
@@ -25,6 +26,31 @@ export function openSettings() {
     const listWrap = h('div', { id: 'reorder-list' });
     body.appendChild(listWrap);
     renderReorderList(listWrap);
+
+    body.appendChild(h('div', { class: 'divider' }));
+
+    // --- SharePoint / Microsoft (rendición de sellos) ---
+    body.appendChild(section('SharePoint · Rendición de sellos', 'Conexión con Microsoft para escribir los sellos. Lo habilita IT una sola vez.'));
+
+    const clientId = h('input', { class: 'input', placeholder: 'Client ID (Application ID)', value: prefs.get('msClientId', '') });
+    body.appendChild(h('div', { class: 'field' }, h('label', {}, 'Client ID de Microsoft'), clientId));
+
+    const tenant = h('input', { class: 'input', placeholder: 'Directory (tenant) ID o dominio', value: prefs.get('msTenant', '') });
+    body.appendChild(h('div', { class: 'field' }, h('label', {}, 'Tenant ID (de tu empresa)'), tenant));
+
+    const sim = h('input', { type: 'checkbox', ...(prefs.get('spSimulate', false) ? { checked: true } : {}) });
+    sim.addEventListener('change', () => { prefs.set('spSimulate', sim.checked); toast(sim.checked ? 'Simulación ON' : 'Simulación OFF'); });
+    body.appendChild(h('div', { class: 'setting-row' },
+      h('div', { class: 'sr-main' }, h('div', { class: 'sr-title' }, '🧪 Modo simulación'), h('div', { class: 'sr-desc' }, 'Prueba el formulario sin escribir en SharePoint.')),
+      h('label', { class: 'switch' }, sim, h('span', { class: 'track' }), h('span', { class: 'thumb' }))
+    ));
+
+    body.appendChild(h('button', { class: 'btn primary sm', onClick: () => {
+      prefs.set('msClientId', clientId.value.trim());
+      prefs.set('msTenant', tenant.value.trim());
+      toast('Configuración de Microsoft guardada');
+    } }, 'Guardar conexión'));
+    body.appendChild(h('div', { class: 'hint' }, 'Redirect URIs a registrar en Azure: para el APK usa "com.infovip.app://auth" (Mobile/desktop) y para web tu URL + /redirect.html (SPA).'));
 
     body.appendChild(h('div', { class: 'divider' }));
 
