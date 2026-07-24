@@ -23,9 +23,21 @@ export const DEFAULT_SP = {
   columns: {
     rol: 'F', color: 'C', cargo: 'D', condicion: 'E', posicion: 'I',
     retiroNum: 'J', retiroColor: 'K', otc: 'L', fecha: 'M', motivo: 'N'
-  }
+  },
+  // Para el modo asistido (abrir en el navegador con la cuenta invitada)
+  webBase: 'https://eepachile.sharepoint.com/sites/Operaciones.EEPA',
+  webLib: 'Documentos compartidos/CENTRO DE CONTROL/Registro de Sellos',
+  folderUrl: 'https://eepachile.sharepoint.com/sites/Operaciones.EEPA/Documentos%20compartidos/Forms/AllItems.aspx?id=%2Fsites%2FOperaciones%2EEEPA%2FDocumentos%20compartidos%2FCENTRO%20DE%20CONTROL%2FRegistro%20de%20Sellos'
 };
 export function spConfig() { return { ...DEFAULT_SP, ...(prefs.get('spConfig', {}) || {}) }; }
+
+// URL para abrir un archivo específico en SharePoint (navegador con sesión).
+export function buildFileUrl(name) {
+  const c = spConfig();
+  const lib = c.webLib.split('/').map(encodeURIComponent).join('/');
+  return `${c.webBase}/${lib}/${encodeURIComponent(name)}`;
+}
+export function folderUrl() { return spConfig().folderUrl; }
 
 async function api(path, opts = {}) {
   const token = await getAccessToken();

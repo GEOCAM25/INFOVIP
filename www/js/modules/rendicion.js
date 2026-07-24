@@ -17,8 +17,16 @@ import { register } from '../core/router.js';
 import { db } from '../core/db.js';
 import { prefs } from '../core/store.js';
 import { isConfigured, isSignedIn, account, signIn, signOut } from '../core/msauth.js';
-import { rendir, locateSeal, readCargo, parseRange } from '../core/graph.js';
+import { rendir, readCargo, parseRange, buildFileUrl, folderUrl } from '../core/graph.js';
 import { openSettings } from './config.js';
+
+// Lista local de archivos de la carpeta (para saber archivo y fila sin sesión).
+function getFileList() { return prefs.get('sealFiles', []); }
+function matchFileLocal(seal) {
+  const n = parseInt(String(seal).replace(/\D/g, ''), 10);
+  for (const f of getFileList()) if (n >= f.start && n <= f.end) return { name: f.name, row: 6 + (n - f.start) };
+  return null;
+}
 
 const CARGOS = ['ALEXIS CONTRERAS','BRANDON ESPINOZA','CHRISTIAN ESTAY','CLAUDIO CEA','CRISTÓBAL GARCÉS','EDGARD MURILLO','ELÍAS FLORES','FABIÁN ÁLVAREZ','FELIPE TELLO','FERNANDO FLORES','GONZALO ULLOA','GUILLERMO JAÑA','HEIN VALDEBENITO','JOHANNES FLORES','JOSÉ HERNÁNDEZ','JOSÉ PASTENES','JOSÉ SILVA','JUAN GÓMEZ','MATÍAS CARRASCO','MATÍAS ESCOBAR','MIGUEL JARA','NICOLÁS GÓMEZ','NICOLÁS SEVERINO','RICARDO JIMÉNEZ','RICARDO SOTO','RICHARD ARAVENA','RICHARD MONTESINOS','RUBÉN DÍAZ','RUBÉN MUÑOZ','SERGIO MARTÍNEZ'];
 const CONDICIONES = ['INSTALADO','EXTRAVIADO','APOYO LECTURAS','NULO','PRUEBA DE CALIDAD'];
@@ -32,8 +40,11 @@ async function render(root) {
   clear(root);
   extras = [];
   root.appendChild(h('div', { class: 'page-title' }, 'Rendición de Sellos'));
-  root.appendChild(h('div', { class: 'page-sub' }, 'Ingresa el sello instalado y la app lo escribe en el Excel correcto de SharePoint.'));
+  root.appendChild(h('div', { class: 'page-sub' }, 'Ingresa el sello instalado; la app te dice el archivo, la fila y los datos, y abre el Excel en SharePoint.'));
   root.appendChild(connectionCard(root));
+  // Botón para cargar la lista de archivos de la carpeta (modo asistido)
+  root.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-bottom:14px', onClick: () => openFileList(root) },
+    `📁 Archivos de la carpeta (${getFileList().length})`));
 
   const f = {};
   const card = h('div', { class: 'card' });
@@ -87,9 +98,9 @@ async function render(root) {
   const renderExtras = () => paintExtras(extrasWrap);
   root.appendChild(h('button', { class: 'btn ghost', onClick: () => { extras.push({ seal: '', posicion: '', retiroNum: '', retiroColor: 'SIN SELLO' }); renderExtras(); } }, '➕  Agregar sello (misma dirección)'));
 
-  root.appendChild(h('button', { class: 'btn primary mt', onClick: () => submit(f, root) }, '📤  Rendir sello(s)'));
+  root.appendChild(h('button', { class: 'btn primary mt', onClick: () => submit(f, root) }, simulating() ? '📋  Preparar datos' : '📤  Rendir sello(s)'));
   root.appendChild(h('div', { class: 'hint' }, simulating()
-    ? '🧪 Simulación: valida y muestra qué escribiría, sin tocar SharePoint.'
+    ? 'Modo asistido: la app te da archivo, fila y datos, y abre el Excel en SharePoint para que los escribas (gratis, sin IT).'
     : 'Escribe directo en SharePoint. Medidor y dirección se autocompletan por la fórmula del Excel.'));
 }
 
@@ -141,7 +152,7 @@ function connectionCard(root) {
     card.appendChild(h('div', { class: 'row between' },
       h('div', {}, h('h3', { style: 'margin:0' }, '⚙️ Falta configurar'), h('div', { class: 'muted' }, 'Pega el Client ID de Microsoft para conectar.')),
       h('button', { class: 'btn sm', style: 'width:auto', onClick: () => openSettings() }, 'Configurar')));
-    card.appendChild(h('span', { class: 'chip warn mt' }, '🧪 Simulación'));
+    card.appendChild(h('span', { class: 'chip mt' }, '📋 Modo asistido (sin IT)'));
     return card;
   }
   if (!isSignedIn()) {
@@ -171,7 +182,7 @@ async function submit(f, root) {
 
   const entries = [main, ...extras.map((e) => ({ seal: e.seal, posicion: e.posicion, retiroNum: e.retiroNum || 'SS', retiroColor: e.retiroColor }))];
 
-  if (simulating()) return simulate(base, entries);
+  if (simulating()) return assisted(base, entries);
 
   const progress = sheet('Rindiendo…', (body) => {
     body.appendChild(h('div', { class: 'center', style: 'padding:10px 0' },
@@ -191,26 +202,71 @@ async function submit(f, root) {
   }
 }
 
-function simulate(base, entries) {
-  sheet('🧪 Simulación', (body, api) => {
+// MODO ASISTIDO: muestra archivo + fila + valores, abre el Excel y copia.
+function assisted(base, entries) {
+  sheet('📋 Datos para rendir', (body, api) => {
+    let firstFile = null;
     entries.forEach((e, i) => {
-      const n = parseInt(String(e.seal).replace(/\D/g, ''), 10);
-      const bStart = Math.floor((n - 1) / 50) * 50 + 1;
-      const file = `${bStart}_al_${bStart + 49}.xlsx`;
+      const m = matchFileLocal(e.seal);
+      if (i === 0 && m) firstFile = m.name;
+      const fila = m ? `fila ${m.row}` : '—';
+      const archivo = m ? m.name : '⚠️ carga la lista de archivos';
       body.appendChild(h('div', { class: 'card', style: 'margin:0 0 10px' },
-        h('div', { class: 'chip' }, `Sello ${esc(e.seal)}${i === 0 ? ' (principal)' : ''}`),
-        h('div', { class: 'kv', style: 'margin-top:8px' }, h('span', { class: 'k' }, 'Archivo'), h('span', { class: 'v' }, file)),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'ROL'), h('span', { class: 'v' }, base.rol || '—')),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Cargo'), h('span', { class: 'v' }, base.cargo || '—')),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Condición'), h('span', { class: 'v' }, base.condicion)),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Posición'), h('span', { class: 'v' }, e.posicion || '—')),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Retirado'), h('span', { class: 'v' }, `${e.retiroNum} · ${e.retiroColor}`)),
-        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'OTC / Motivo'), h('span', { class: 'v' }, `${base.otc || '—'} · ${base.motivo || '—'}`))
+        h('div', { class: 'row between' },
+          h('div', { class: 'chip' }, `Sello ${esc(e.seal)}${i === 0 ? ' (principal)' : ''}`),
+          m ? h('span', { class: 'chip ok' }, fila) : null),
+        h('div', { class: 'kv', style: 'margin-top:8px' }, h('span', { class: 'k' }, 'Archivo'), h('span', { class: 'v', style: 'text-align:right;max-width:60%' }, archivo)),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'ROL (col F)'), h('span', { class: 'v' }, base.rol || '—')),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Color (col C)'), h('span', { class: 'v' }, 'CAFÉ')),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Cargo (col D)'), h('span', { class: 'v' }, base.cargo || '—')),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Condición (E)'), h('span', { class: 'v' }, base.condicion)),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Posición (I)'), h('span', { class: 'v' }, e.posicion || '—')),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Retirado (J/K)'), h('span', { class: 'v' }, `${e.retiroNum} · ${e.retiroColor}`)),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'OTC (L) / Motivo (N)'), h('span', { class: 'v', style: 'text-align:right;max-width:60%' }, `${base.otc || '—'} · ${base.motivo || '—'}`)),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Fecha (M)'), h('span', { class: 'v' }, base.fecha))
       ));
     });
-    body.appendChild(h('div', { class: 'hint' }, 'Color = CAFÉ (fijo). Al conectar Microsoft se escribe de verdad; medidor y dirección los completa la fórmula del Excel.'));
-    body.appendChild(h('button', { class: 'btn primary mt', onClick: () => api.close() }, 'Entendido'));
-  }, `${entries.length} sello(s)`);
+
+    body.appendChild(h('div', { class: 'btn-row' },
+      h('button', { class: 'btn primary', onClick: () => window.open(firstFile ? buildFileUrl(firstFile) : folderUrl(), '_blank') },
+        firstFile ? '📂 Abrir Excel' : '📂 Abrir carpeta'),
+      h('button', { class: 'btn ghost', onClick: async () => {
+        const txt = buildCopyText(base, entries);
+        try { await navigator.clipboard.writeText(txt); toast('Copiado'); } catch (_) { toast('No se pudo copiar'); }
+      } }, '📋 Copiar')));
+    body.appendChild(h('div', { class: 'hint', style: 'margin-top:10px' }, 'Abre el Excel (ya estás con tu cuenta), ve a la fila indicada y escribe estos datos. Medidor y dirección se autocompletan por la fórmula.'));
+    body.appendChild(h('button', { class: 'btn ghost mt', onClick: () => api.close() }, 'Listo'));
+  }, `${entries.length} sello(s) · modo asistido`);
+}
+
+function buildCopyText(base, entries) {
+  const lines = [`RENDICIÓN — ${base.fecha}`, `ROL ${base.rol} · Cargo ${base.cargo} · ${base.condicion} · OTC ${base.otc} · ${base.motivo}`];
+  entries.forEach((e) => {
+    const m = matchFileLocal(e.seal);
+    lines.push(`Sello ${e.seal}${m ? ` → ${m.name} fila ${m.row}` : ''} · pos ${e.posicion} · retirado ${e.retiroNum}/${e.retiroColor}`);
+  });
+  return lines.join('\n');
+}
+
+// Editor de la lista de archivos de la carpeta (pegar nombres).
+function openFileList(root) {
+  sheet('Archivos de la carpeta', (body, api) => {
+    body.appendChild(h('p', { class: 'muted', style: 'margin:0 0 10px' }, 'Pega aquí los nombres de los Excel de la carpeta (uno por línea). Así la app sabe el archivo y la fila exactos. Ej: "10951 al 11000".'));
+    const ta = h('textarea', { class: 'input', style: 'min-height:160px', placeholder: '10301 al 10350\n10951 al 11000\n11351 al 11410' });
+    ta.value = getFileList().map((f) => f.name.replace(/\.xlsx?$/i, '')).join('\n');
+    body.appendChild(h('div', { class: 'field' }, ta));
+    body.appendChild(h('button', { class: 'btn primary', onClick: () => {
+      const list = [];
+      ta.value.split(/\r?\n/).forEach((line) => {
+        const t = line.trim(); if (!t) return;
+        const r = parseRange(t);
+        if (r) list.push({ name: /\.xlsx?$/i.test(t) ? t : t + '.xlsx', start: r.start, end: r.end });
+      });
+      prefs.set('sealFiles', list);
+      api.close(); toast(`${list.length} archivos guardados`); render(root);
+    } }, 'Guardar lista'));
+    body.appendChild(h('div', { class: 'hint' }, 'Solo se guardan los nombres (rangos), no el contenido. Todo local en tu teléfono.'));
+  }, `${getFileList().length} cargados`);
 }
 
 function field(label, el) { return h('div', { class: 'field' }, h('label', {}, label), el); }
