@@ -51,16 +51,34 @@ jobs:
       - name: Sync web assets into Android
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Build APK (release firmado si hay keystore; si no, debug)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
+          set -e
+          mkdir -p dist
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Rename APK
-        run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/INFOVIP-${GITHUB_RUN_NUMBER}.apk"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "🔏 Keystore presente → compilando RELEASE firmado"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
+            ./gradlew assembleRelease --no-daemon
+            UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
+            BT="$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)"
+            echo "build-tools: $BT"
+            "$ANDROID_SDK_ROOT/build-tools/$BT/zipalign" -f 4 "$UNSIGNED" aligned.apk
+            "$ANDROID_SDK_ROOT/build-tools/$BT/apksigner" sign \
+              --ks release.keystore --ks-key-alias infovip \
+              --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" --key-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+              --out "../dist/INFOVIP-${GITHUB_RUN_NUMBER}.apk" aligned.apk
+            "$ANDROID_SDK_ROOT/build-tools/$BT/apksigner" verify --print-certs "../dist/INFOVIP-${GITHUB_RUN_NUMBER}.apk" | head -4
+            rm -f release.keystore aligned.apk
+          else
+            echo "ℹ️ Sin keystore → compilando DEBUG (agrega los secrets para firmar)"
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "../dist/INFOVIP-${GITHUB_RUN_NUMBER}.apk"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
