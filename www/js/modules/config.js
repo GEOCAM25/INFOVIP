@@ -135,20 +135,43 @@ function buildDeviceAdmin() {
       toast(r === 'authorized' ? '✅ Autorizado' : r === 'revoked' ? '⛔ Desautorizado' : 'Consultado (sin cambios)');
       status.textContent = await paint();
     } }, '🔄  Buscar autorización'));
+    wrap.appendChild(h('div', { class: 'hint' }, 'Para autorizar otro teléfono, envíame su ID (aparece tocando el rombo 15 veces en la pantalla de bloqueo) y yo lo agrego a tu lista. Nadie puede habilitarse por su cuenta.'));
 
-    // Huella (hash) para agregar a la lista sin exponer el ID (uso avanzado).
-    const hashBtn = h('button', { class: 'btn ghost sm', style: 'margin-top:6px', onClick: async () => {
-      const hh = await da.getDeviceHash();
-      hashBtn.replaceWith(h('div', { class: 'field' },
-        h('label', {}, 'Huella (hash) de este teléfono'),
-        h('div', { class: 'admin-row' },
-          h('code', { class: 'admin-code', style: 'font-size:11px;word-break:break-all' }, hh),
-          h('button', { class: 'btn ghost small', onClick: () => copy(hh) }, '📋')
-        )
-      ));
-    } }, '🔑  Ver huella para la lista');
-    wrap.appendChild(hashBtn);
-    wrap.appendChild(h('div', { class: 'hint' }, 'Para autorizar otro teléfono, envíame su ID (aparece tocando el rombo 5 veces en la pantalla de bloqueo) y yo lo agrego a tu lista. Nadie puede habilitarse por su cuenta.'));
+    // --- Zona oculta de administrador: 15 toques sobre "ID de este teléfono" ---
+    const adminBox = h('div', { class: 'admin-hidden' });
+    adminBox.hidden = true;
+    wrap.appendChild(adminBox);
+    let taps = 0, tt = null;
+    const label = wrap.querySelector('.field label');
+    if (label) {
+      label.style.cursor = 'default';
+      label.addEventListener('click', async () => {
+        taps++; clearTimeout(tt); tt = setTimeout(() => (taps = 0), 3000);
+        if (taps < 15 || !adminBox.hidden) return;
+        taps = 0; adminBox.hidden = false;
+        const code = await da.adminCode();
+        const hh = await da.getDeviceHash();
+        adminBox.replaceChildren(
+          h('div', { class: 'divider' }),
+          h('div', { class: 'sr-title', style: 'font-size:14px' }, '🔒 Administrador'),
+          h('div', { class: 'field', style: 'margin-top:8px' },
+            h('label', {}, 'Código de administrador'),
+            h('div', { class: 'admin-row' },
+              h('code', { class: 'admin-code' }, code),
+              h('button', { class: 'btn ghost small', onClick: () => copy(code) }, '📋')
+            )
+          ),
+          h('div', { class: 'hint' }, 'Con este código habilitas un teléfono nuevo al instante: en su pantalla de bloqueo, toca el rombo 15 veces y escríbelo. Guárdalo en privado.'),
+          h('div', { class: 'field', style: 'margin-top:10px' },
+            h('label', {}, 'Huella (hash) de este teléfono'),
+            h('div', { class: 'admin-row' },
+              h('code', { class: 'admin-code', style: 'font-size:11px;word-break:break-all' }, hh),
+              h('button', { class: 'btn ghost small', onClick: () => copy(hh) }, '📋')
+            )
+          )
+        );
+      });
+    }
   }).catch(() => { wrap.appendChild(h('div', { class: 'hint' }, 'No se pudo cargar el panel.')); });
 
   return wrap;
