@@ -4,6 +4,8 @@
    el instalado, ofrece "Actualizar app": descarga el APK firmado
    (misma llave) y el usuario lo instala encima, sin desinstalar.
    ============================================================ */
+import { toast } from './ui.js';
+
 const OWNER = 'GEOCAM25';
 const REPO = 'INFOVIP';
 
@@ -53,9 +55,19 @@ export async function checkUpdate() {
 
 export async function openInstall(url) {
   if (!url) return;
-  const Browser = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.Browser : null;
-  if (Browser) { try { await Browser.open({ url }); return; } catch (_) {} }
-  window.open(url, '_blank');
+  toast('⬇️ Descargando… si no aparece “Instalar”, ábrelo desde Descargas.', 5000);
+  const P = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
+  // 1) Abrir en el navegador EXTERNO del sistema (Chrome) → descarga el APK
+  //    correctamente y ofrece "Instalar". (El navegador interno se colgaba.)
+  if (P.AppLauncher && P.AppLauncher.openUrl) {
+    try { await P.AppLauncher.openUrl({ url }); return; } catch (_) {}
+  }
+  // 2) Respaldo: navegador interno
+  if (P.Browser && P.Browser.open) {
+    try { await P.Browser.open({ url }); return; } catch (_) {}
+  }
+  // 3) Respaldo web
+  window.open(url, '_system');
 }
 
 // Muestra el banner "Actualizar app" (módulo estable, sin depender de app.js).
