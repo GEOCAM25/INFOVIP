@@ -73,7 +73,7 @@ export function openSettings() {
     body.appendChild(h('div', { class: 'divider' }));
 
     // --- Bloqueo por dispositivo (solo teléfonos autorizados) ---
-    body.appendChild(section('Teléfonos autorizados', 'Genera códigos para habilitar teléfonos y consulta el ID de este equipo.'));
+    body.appendChild(section('Teléfono autorizado', 'ID de este equipo y estado de la autorización.'));
     body.appendChild(buildDeviceAdmin());
 
     body.appendChild(h('div', { class: 'divider' }));
@@ -108,10 +108,10 @@ export function openSettings() {
   }, 'Personaliza INFOVIP a tu gusto.');
 }
 
-/* ---------- Panel de administración de dispositivos ---------- */
+/* ---------- Panel de dispositivo ---------- */
 function buildDeviceAdmin() {
   const wrap = h('div');
-  const copy = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copiado'); } catch (_) { toast(t); } };
+  const copy = async (t) => { try { await navigator.clipboard.writeText(t); toast('ID copiado'); } catch (_) { toast(t); } };
 
   import('../core/deviceauth.js').then(async (da) => {
     const myId = await da.getDeviceId();
@@ -125,53 +125,17 @@ function buildDeviceAdmin() {
       )
     ));
 
-    // Generador: ID del guardia -> su código de activación
-    const idInput = h('input', { class: 'input', placeholder: 'INV-XXXX-XXXX', autocapitalize: 'characters' });
-    const out = h('div', { class: 'hint', style: 'margin-top:8px' }, '');
-    const gen = async () => {
-      const v = idInput.value.trim();
-      if (!v) { out.textContent = 'Escribe el ID que te pasó el guardia.'; return; }
-      const code = await da.codeForId(v);
-      out.innerHTML = '';
-      out.appendChild(h('div', { class: 'admin-row' },
-        h('span', {}, 'Código para ' + v.toUpperCase() + ': '),
-        h('code', { class: 'admin-code' }, code),
-        h('button', { class: 'btn ghost small', onClick: () => copy(code) }, '📋')
-      ));
-    };
-    wrap.appendChild(h('div', { class: 'field' },
-      h('label', {}, 'Generar código para otro teléfono'),
-      idInput,
-      h('button', { class: 'btn primary sm', style: 'margin-top:8px', onClick: gen }, 'Generar código'),
-      out
-    ));
-
-    // Código maestro (oculto hasta pulsar)
-    const masterBtn = h('button', { class: 'btn ghost sm', onClick: async () => {
-      const mc = await da.masterCode();
-      masterBtn.replaceWith(h('div', { class: 'admin-row' },
-        h('span', {}, '🔑 Maestro: '),
-        h('code', { class: 'admin-code' }, mc),
-        h('button', { class: 'btn ghost small', onClick: () => copy(mc) }, '📋')
-      ));
-    } }, '🔑  Ver código maestro');
-    wrap.appendChild(masterBtn);
-    wrap.appendChild(h('div', { class: 'hint' }, 'El código maestro autoriza cualquier teléfono (úsalo solo para tu propio equipo). Los códigos por ID solo valen para ese teléfono.'));
-
-    // Lista remota (GitHub)
-    const urlInput = h('input', { class: 'input', value: da.getListUrl() });
-    wrap.appendChild(h('div', { class: 'field', style: 'margin-top:10px' },
-      h('label', {}, 'Lista remota (URL en GitHub)'),
-      urlInput,
-      h('div', { class: 'btn-row', style: 'margin-top:8px' },
-        h('button', { class: 'btn ghost sm', onClick: () => { da.setListUrl(urlInput.value.trim()); toast('URL guardada'); } }, 'Guardar URL'),
-        h('button', { class: 'btn ghost sm', onClick: async () => {
-          const r = await da.syncRemote();
-          toast(r === 'authorized' ? '✅ Autorizado por la lista' : r === 'revoked' ? '⛔ Revocado por la lista' : 'Lista consultada (sin cambios)');
-        } }, 'Consultar ahora')
-      )
-    ));
-    wrap.appendChild(h('div', { class: 'hint' }, 'Edita ese archivo en GitHub para habilitar (authorized) o bloquear (revoked) teléfonos por su ID. Aplica al abrir la app con internet.'));
+    // Estado + re-consulta de la lista
+    const status = h('div', { class: 'hint', style: 'margin-top:2px' },
+      da.isAuthorizedLocal() ? '✅ Este teléfono está autorizado.' : '⏳ Autorización pendiente.');
+    wrap.appendChild(status);
+    wrap.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-top:8px', onClick: async () => {
+      if (!navigator.onLine) { toast('Sin conexión'); return; }
+      const r = await da.syncRemote();
+      toast(r === 'authorized' ? '✅ Autorizado' : r === 'revoked' ? '⛔ Desautorizado' : 'Consultado (sin cambios)');
+      status.textContent = da.isAuthorizedLocal() ? '✅ Este teléfono está autorizado.' : '⏳ Autorización pendiente.';
+    } }, '🔄  Buscar autorización'));
+    wrap.appendChild(h('div', { class: 'hint' }, 'Para autorizar otro teléfono, envíame su ID (lo muestra en la pantalla de bloqueo) y yo lo agrego a tu lista. Nadie puede habilitarse por su cuenta.'));
   }).catch(() => { wrap.appendChild(h('div', { class: 'hint' }, 'No se pudo cargar el panel.')); });
 
   return wrap;

@@ -1,23 +1,21 @@
 /* ============================================================
-   INFOVIP · Bloqueo por dispositivo ("solo teléfonos autorizados")
+   INFOVIP · Bloqueo por dispositivo (lista de teléfonos autorizados)
    ------------------------------------------------------------
+   NO hay claves ni códigos: la ÚNICA forma de que un teléfono entre es
+   estar en la lista de autorizados que controla el administrador. Así,
+   aunque alguien lea el código de la app, no puede autorizarse solo.
+
    En Android 10+ el IMEI ya no se puede leer, así que usamos el
-   identificador estable que entrega Capacitor (Device.getId) y de él
-   derivamos una "huella" corta y legible:  INV-XXXX-XXXX.
+   identificador estable de Capacitor (Device.getId) y de él derivamos
+   una "huella" corta y legible:  INV-XXXX-XXXX.
 
-   Un teléfono queda autorizado por cualquiera de estas vías:
-     1) CÓDIGO DE ACTIVACIÓN (offline): un código atado a ESA huella.
-        El admin lo genera desde su propio teléfono (Ajustes) y se lo
-        pasa por WhatsApp. Sirve sin internet y no se puede compartir
-        entre teléfonos (cada código solo vale para su huella).
-     2) LISTA REMOTA (GitHub): un archivo authorized.json en el repo con
-        las huellas permitidas. Se consulta al abrir (si hay internet) y
-        queda cacheada. Permite AÑADIR o REVOCAR teléfonos de forma
-        central sin generar códigos.
-
-   Una vez autorizado, el estado queda guardado y la app abre siempre,
-   aunque no haya señal. La revocación remota (si hay internet) puede
-   volver a bloquearlo.
+   Un teléfono queda autorizado si su huella está en:
+     1) la LISTA INCRUSTADA en la app (AUTHORIZED_DEVICES), o
+     2) la LISTA REMOTA en GitHub (authorized.json), que el admin edita
+        sin recompilar la app.
+   La lista remota también puede REVOCAR un teléfono (ponerlo en "revoked"),
+   lo que lo bloquea aunque estuviera incrustado. Una vez autorizado, el
+   permiso queda cacheado y la app abre sin señal.
    ============================================================ */
 import { device } from './native.js';
 import { prefs } from './store.js';
@@ -25,15 +23,18 @@ import { prefs } from './store.js';
 // ¿Se exige autorización en esta compilación? true en producción.
 export const LOCK_ENABLED = true;
 
-// Semilla secreta para derivar los códigos de activación. Va incrustada
-// en la app (es un tornillo, no una caja fuerte): impide que alguien que
-// instale el APK lo abra sin un código, que es justo lo que se busca.
-const SECRET = 'INFOVIP-9f3c7a1e-Guardia-EEPA-2026-lock-v1';
+// Teléfonos autorizados de forma permanente (incrustados en la app).
+// Se añaden aquí solo al recompilar. Para el día a día se usa la lista
+// remota, que no necesita recompilar. Formato: 'INV-XXXX-XXXX'.
+export const AUTHORIZED_DEVICES = [
+  // 'INV-XXXX-XXXX',
+];
 
-// URL de la lista remota de huellas autorizadas (editable en GitHub).
-// Si no se puede leer (sin internet o repo privado), se ignora sin romper.
-const DEFAULT_LIST_URL =
-  'https://raw.githubusercontent.com/geocam25/infovip/main/www/data/authorized.json';
+// Lista remota de huellas autorizadas (la edita SOLO el administrador en
+// GitHub). Va en la rama main pero excluida del disparador de compilación,
+// así editarla NO recompila la app. URL fija (no se puede cambiar desde la
+// app, para que nadie pueda apuntar a otra lista).
+const LIST_URL = 'https://raw.githubusercontent.com/GEOCAM25/INFOVIP/main/www/data/authorized.json';
 
 const enc = new TextEncoder();
 // Alfabeto Crockford base32 sin caracteres confusos (sin I, L, O, U).
@@ -54,17 +55,9 @@ async function sha256(str) {
   return new Uint8Array(buf);
 }
 
-async function hmac256(key, msg) {
-  const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', k, enc.encode(msg));
-  return new Uint8Array(sig);
-}
-
-// Normaliza un código escrito por el usuario (mayúsculas, sin guiones/espacios,
-// corrige confusiones típicas O→0, I/L→1).
-function normCode(s) {
-  return String(s || '').toUpperCase().replace(/[^0-9A-Z]/g, '')
-    .replace(/O/g, '0').replace(/[IL]/g, '1');
+// Normaliza una huella para comparar (mayúsculas, corrige O→0, I/L→1).
+function normId(s) {
+  return String(s || '').toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/[^0-9A-Z-]/g, '');
 }
 
 /* ---------- Huella del dispositivo (INV-XXXX-XXXX) ---------- */
@@ -78,64 +71,29 @@ export async function getDeviceId() {
   return _fp;
 }
 
-/* ---------- Código de activación atado a una huella ---------- */
-// Genera el código para una huella dada (lo usa el admin desde Ajustes).
-export async function codeForId(deviceId) {
-  const sig = await hmac256(SECRET, 'activate:' + normCode(deviceId));
-  const code = b32(sig, 8);
-  return `${code.slice(0, 4)}-${code.slice(4, 8)}`;
+function bakedIn(id) {
+  const n = normId(id);
+  return AUTHORIZED_DEVICES.map(normId).includes(n);
 }
 
-// Código MAESTRO: autoriza cualquier teléfono. Sirve para "arrancar" el
-// primer teléfono del admin (que aún no está en ninguna lista) y desde ahí
-// generar los códigos del resto. Guárdalo en privado.
-export async function masterCode() {
-  const sig = await hmac256(SECRET, 'master:INFOVIP');
-  const code = b32(sig, 10);
-  return `${code.slice(0, 5)}-${code.slice(5, 10)}`;
-}
-
-// Verifica un código escrito contra la huella de ESTE teléfono (o el maestro).
-export async function verifyCode(input) {
-  const typed = normCode(input);
-  if (!typed) return false;
-  const id = await getDeviceId();
-  const expected = normCode(await codeForId(id));
-  const master = normCode(await masterCode());
-  return typed === expected || typed === master;
-}
-
-/* ---------- Persistencia del estado autorizado ---------- */
-function markAuthorized(via) {
-  prefs.set('devAuth', { ok: true, via, at: Date.now() });
-}
-export function isAuthorizedLocal() {
-  return !!(prefs.get('devAuth', null) || {}).ok;
-}
-export function clearAuthorization() { prefs.remove('devAuth'); }
-
-// Guarda el código y marca autorizado si es válido.
-export async function activateWithCode(input) {
-  if (await verifyCode(input)) { markAuthorized('codigo'); return true; }
-  return false;
-}
+/* ---------- Estado cacheado ---------- */
+// devGranted: autorizado por la lista remota (cacheado para uso offline).
+// devRevoked: revocado por la lista remota (pegajoso hasta re-autorizar).
+export function isAuthorizedLocal() { return prefs.get('devGranted', false) === true; }
+function setGranted(v) { prefs.set('devGranted', !!v); }
+function setRevoked(v) { prefs.set('devRevoked', !!v); }
+function isRevoked() { return prefs.get('devRevoked', false) === true; }
 
 /* ---------- Lista remota (GitHub) ---------- */
-export function getListUrl() { return prefs.get('devListUrl', DEFAULT_LIST_URL); }
-export function setListUrl(u) { prefs.set('devListUrl', u || DEFAULT_LIST_URL); }
+export function getListUrl() { return LIST_URL; }
 
-// Descarga la lista: { authorized: ["INV-..."], revoked: ["INV-..."] }.
-// Usa CapacitorHttp si está disponible (evita CORS); si no, fetch normal.
 async function fetchList() {
-  const url = getListUrl();
-  if (!url) return null;
-  const bust = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  const bust = LIST_URL + (LIST_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
   try {
     const CapHttp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
     if (CapHttp && CapHttp.get) {
       const r = await CapHttp.get({ url: bust, headers: { Accept: 'application/json' }, connectTimeout: 8000, readTimeout: 8000 });
-      const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
-      return data;
+      return typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
     }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
@@ -146,38 +104,43 @@ async function fetchList() {
   } catch (_) { return null; }
 }
 
-// Consulta la lista remota y actualiza el estado local:
-//  - si la huella está en "revoked" → se bloquea (borra autorización).
-//  - si está en "authorized" → se autoriza.
-// Devuelve 'authorized' | 'revoked' | null (sin cambios / sin conexión).
+// Consulta la lista remota y actualiza el estado cacheado.
+// Devuelve 'authorized' | 'revoked' | null.
 export async function syncRemote() {
   const list = await fetchList();
   if (!list) return null;
-  const id = normCode(await getDeviceId());
-  const norm = (arr) => (Array.isArray(arr) ? arr.map(normCode) : []);
+  const id = normId(await getDeviceId());
+  const norm = (arr) => (Array.isArray(arr) ? arr.map(normId) : []);
   const revoked = norm(list.revoked);
   const allowed = norm(list.authorized);
-  if (revoked.includes(id)) { clearAuthorization(); prefs.set('devListSeen', Date.now()); return 'revoked'; }
-  if (allowed.includes(id)) { markAuthorized('lista'); prefs.set('devListSeen', Date.now()); return 'authorized'; }
-  prefs.set('devListSeen', Date.now());
+  if (revoked.includes(id)) { setRevoked(true); setGranted(false); return 'revoked'; }
+  setRevoked(false);
+  if (allowed.includes(id)) { setGranted(true); return 'authorized'; }
+  // No está en la lista: si antes se le había concedido por remoto, se le
+  // retira (así quitar un teléfono de la lista también lo revoca).
+  setGranted(false);
   return null;
 }
 
-/* ---------- Chequeo principal (lo llama el arranque) ---------- */
-// Rápido y offline-first: resuelve con el estado LOCAL sin esperar a la red,
-// para que el arranque no se quede colgado. La comprobación remota (autorizar
-// nuevos teléfonos o revocar) la hacen la pantalla de bloqueo y el chequeo en
-// segundo plano. Resuelve { authorized, deviceId }.
+/* ---------- Chequeo principal (arranque, rápido y offline) ---------- */
+// Resuelve con el estado LOCAL sin esperar a la red. La comprobación remota
+// la hacen la pantalla de bloqueo y el chequeo en 2º plano.
 export async function checkAuthorization() {
   const deviceId = await getDeviceId();
   if (!LOCK_ENABLED) return { authorized: true, deviceId };
-  return { authorized: isAuthorizedLocal(), deviceId };
+  if (isRevoked()) return { authorized: false, deviceId };
+  return { authorized: bakedIn(deviceId) || isAuthorizedLocal(), deviceId };
 }
 
-// Revisa la lista remota en 2º plano para un teléfono YA autorizado: si fue
-// revocado, devuelve true (el arranque decide qué hacer). No bloquea el uso.
+// Para un teléfono YA autorizado: revisa en 2º plano si fue revocado o
+// retirado de la lista. Devuelve true si ahora está bloqueado.
 export async function checkRevocation() {
-  if (!LOCK_ENABLED || !isAuthorizedLocal() || !navigator.onLine) return false;
+  if (!LOCK_ENABLED || !navigator.onLine) return false;
+  const before = (await checkAuthorization()).authorized;
+  if (!before) return false;
   const r = await syncRemote().catch(() => null);
-  return r === 'revoked';
+  if (r === 'revoked') return true;
+  // Si perdió la concesión remota y tampoco está incrustado, queda fuera.
+  const after = (await checkAuthorization()).authorized;
+  return before && !after;
 }

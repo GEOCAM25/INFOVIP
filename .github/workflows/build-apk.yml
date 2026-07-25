@@ -7,6 +7,7 @@ on:
     branches: [ main, master ]
     paths-ignore:
       - '**/*.md'
+      - 'www/data/authorized.json'   # editar la lista de teléfonos no recompila
   workflow_dispatch:
 
 permissions:

@@ -1,13 +1,13 @@
 /* ============================================================
-   INFOVIP · Pantalla "No autorizado" + activación por código
-   Al montarse hace una comprobación silenciosa contra la lista
-   remota (por si el admin ya añadió el teléfono en GitHub). Si
-   sigue sin autorizarse, muestra la huella del dispositivo (para
-   que el guardia se la mande al admin) y un campo para el código
-   de activación offline. "Reintentar" vuelve a leer la lista.
+   INFOVIP · Pantalla "No autorizado"
+   Sin códigos: la única forma de entrar es que el administrador
+   añada el ID de este teléfono a la lista. La pantalla muestra el
+   ID (para copiarlo y enviárselo al admin) y un botón "Reintentar"
+   que vuelve a leer la lista de GitHub. Al abrirse, comprueba sola
+   la lista y se cierra si el teléfono ya quedó autorizado.
    ============================================================ */
 import { h, toast } from './ui.js';
-import { getDeviceId, activateWithCode, syncRemote, isAuthorizedLocal } from './deviceauth.js';
+import { syncRemote, checkAuthorization } from './deviceauth.js';
 
 // Muestra el bloqueo y resuelve cuando el teléfono queda autorizado.
 export function showLockScreen(deviceId) {
@@ -23,27 +23,16 @@ export function showLockScreen(deviceId) {
     const overlay = h('div', { class: 'lock-overlay' }, checking);
     document.body.appendChild(overlay);
 
-    // Tarjeta completa de "No autorizado".
     const buildCard = () => {
-      const idEl = h('div', { class: 'lock-id' }, deviceId);
-      const input = h('input', {
-        class: 'input big center', type: 'text', inputmode: 'text',
-        autocapitalize: 'characters', placeholder: 'XXXX-XXXX', maxlength: '12'
-      });
       const msg = h('div', { class: 'lock-msg' }, '');
       const setMsg = (t, bad) => { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
 
-      const tryCode = async () => {
-        const v = input.value.trim();
-        if (!v) { setMsg('Escribe el código de activación.', true); return; }
-        if (await activateWithCode(v)) { toast('✅ Teléfono autorizado'); done(); }
-        else setMsg('Código incorrecto para este teléfono.', true);
-      };
       const retry = async () => {
         setMsg('Comprobando…', false);
-        const r = await syncRemote().catch(() => null);
-        if (r === 'authorized' || isAuthorizedLocal()) { toast('✅ Teléfono autorizado'); done(); return; }
-        setMsg(navigator.onLine ? 'Aún no está autorizado. Pídele al admin que añada tu ID.' : 'Sin conexión. Usa un código de activación.', true);
+        if (!navigator.onLine) { setMsg('Sin conexión. Conéctate a internet para que se habilite.', true); return; }
+        await syncRemote().catch(() => null);
+        if ((await checkAuthorization()).authorized) { toast('✅ Teléfono autorizado'); done(); return; }
+        setMsg('Aún no está habilitado. Pídele al administrador que agregue tu ID.', true);
       };
       const copyId = async () => {
         try { await navigator.clipboard.writeText(deviceId); toast('ID copiado'); } catch (_) { toast(deviceId); }
@@ -52,35 +41,28 @@ export function showLockScreen(deviceId) {
       const card = h('div', { class: 'lock-card' },
         h('img', { src: './assets/icons/logo.png', alt: 'INFOVIP', class: 'lock-logo' }),
         h('div', { class: 'lock-title' }, 'Teléfono no autorizado'),
-        h('p', { class: 'lock-sub' }, 'Esta app solo funciona en teléfonos autorizados. Envíale tu ID al administrador para que te habilite.'),
+        h('p', { class: 'lock-sub' }, 'Esta app solo funciona en teléfonos autorizados. Copia tu ID y envíaselo al administrador para que habilite este teléfono.'),
         h('div', { class: 'lock-idbox' },
           h('div', { class: 'lock-idlabel' }, 'ID de este teléfono'),
-          idEl,
+          h('div', { class: 'lock-id' }, deviceId),
           h('button', { class: 'btn ghost small', onClick: copyId }, '📋 Copiar ID')
-        ),
-        h('div', { class: 'lock-field' },
-          h('label', { class: 'lock-idlabel' }, 'Código de activación'),
-          input
         ),
         msg,
         h('div', { class: 'btn-row' },
-          h('button', { class: 'btn ghost', onClick: retry }, '🔄 Reintentar'),
-          h('button', { class: 'btn primary', onClick: tryCode }, 'Activar')
+          h('button', { class: 'btn primary', onClick: retry }, '🔄 Ya me habilitaron · Reintentar')
         )
       );
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryCode(); });
       overlay.replaceChildren(card);
-      setTimeout(() => input.focus(), 150);
     };
 
     // Comprobación remota silenciosa (con tope de tiempo para no colgarse).
     (async () => {
       let settled = false;
       const guard = setTimeout(() => { if (!settled) { settled = true; buildCard(); } }, 4500);
-      const r = navigator.onLine ? await syncRemote().catch(() => null) : null;
+      if (navigator.onLine) await syncRemote().catch(() => null);
       if (settled) return;
       settled = true; clearTimeout(guard);
-      if (r === 'authorized' || isAuthorizedLocal()) done();
+      if ((await checkAuthorization()).authorized) done();
       else buildCard();
     })();
   });
