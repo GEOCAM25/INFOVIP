@@ -189,3 +189,40 @@ textarea.input { resize: vertical; min-height: 90px; }
 .weather-hero .cond { color: var(--text-dim); font-size: 15px; margin-top: 4px; }
 .weather-hero .ico { font-size: 60px; }
 .wx-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 16px; }
+
+/* ---------- Bloqueo por dispositivo (pantalla No autorizado) ---------- */
+.lock-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: radial-gradient(120% 90% at 50% 0%, var(--blue-900), var(--bg) 70%);
+  display: flex; align-items: center; justify-content: center;
+  padding: calc(var(--safe-top) + 20px) 18px calc(var(--safe-bottom) + 20px);
+  overflow-y: auto;
+}
+.lock-card {
+  width: 100%; max-width: 380px; background: var(--card);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); padding: 26px 20px; text-align: center;
+}
+.lock-logo { width: 72px; height: 72px; object-fit: contain; margin: 0 auto 10px; display: block;
+  filter: drop-shadow(0 4px 14px var(--accent-glow)); }
+.lock-title { font-size: 20px; font-weight: 800; color: var(--text); }
+.lock-sub { font-size: 13.5px; color: var(--text-dim); margin: 8px 2px 18px; line-height: 1.5; }
+.lock-idbox { background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+.lock-idlabel { font-size: 11.5px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--text-mute); margin-bottom: 6px; }
+.lock-id { font-size: 24px; font-weight: 800; letter-spacing: 1.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: linear-gradient(160deg,var(--metal-hi),var(--steel-300));
+  -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 10px; }
+.lock-field { text-align: left; margin-bottom: 8px; }
+.lock-field .lock-idlabel { margin-bottom: 8px; }
+.lock-msg { min-height: 18px; font-size: 13px; color: var(--ok); margin: 4px 0 14px; }
+.lock-msg.bad { color: var(--danger); }
+.btn.small { padding: 7px 12px; font-size: 12.5px; }
+
+/* ---------- Panel admin de dispositivos ---------- */
+.admin-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 15px;
+  font-weight: 700; color: var(--metal-hi); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; letter-spacing: .5px; }

@@ -69,6 +69,26 @@ export const device = {
     const Device = plugin('Device');
     if (Device && Device.getInfo) return Device.getInfo();
     return { platform: 'web', model: navigator.userAgent };
+  },
+  // Identificador estable del dispositivo. En Android 10+ el IMEI ya no es
+  // legible por apps; Capacitor entrega un id propio persistente que sirve
+  // igual para "atar" la app a un teléfono concreto.
+  async rawId() {
+    const Device = plugin('Device');
+    if (Device && Device.getId) {
+      const r = await Device.getId();
+      return r.identifier || r.uuid || '';
+    }
+    // Web / navegador: id sintético persistido en localStorage.
+    try {
+      let id = localStorage.getItem('infovip:webDeviceId');
+      if (!id) {
+        const a = new Uint8Array(16); crypto.getRandomValues(a);
+        id = [...a].map((b) => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem('infovip:webDeviceId', id);
+      }
+      return id;
+    } catch (_) { return 'web-unknown'; }
   }
 };
 

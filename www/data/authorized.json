@@ -1,0 +1,5 @@
+{
+  "_ayuda": "Lista central de telefonos autorizados de INFOVIP. Edita este archivo en GitHub para habilitar o revocar telefonos. Cada ID tiene el formato INV-XXXX-XXXX y lo muestra la app en la pantalla de 'No autorizado' y en Ajustes. Pon el ID en 'authorized' para habilitar; ponlo en 'revoked' para bloquearlo aunque ya tuviera codigo. Los cambios aplican la proxima vez que el telefono abra la app con internet.",
+  "authorized": [],
+  "revoked": []
+}

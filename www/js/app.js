@@ -12,6 +12,8 @@ import { h, sheet, toast, closeTopOverlay } from './core/ui.js';
 import { currentId, canGoBack, goBack } from './core/router.js';
 import { requestAll, backgroundLocationHint } from './core/permissions.js';
 import { checkUpdate, showUpdateBanner } from './core/appupdate.js';
+import { checkAuthorization, checkRevocation } from './core/deviceauth.js';
+import { showLockScreen } from './core/lockscreen.js';
 
 // Importar los módulos registra sus rutas (efecto de carga).
 import './modules/inicio.js';
@@ -57,6 +59,22 @@ function showApp() {
 
 async function boot() {
   initServiceWorker();
+
+  // Puerta de acceso: solo teléfonos autorizados abren la app.
+  try {
+    const auth = await checkAuthorization();
+    if (!auth.authorized) {
+      const splash = document.getElementById('splash');
+      if (splash) { splash.classList.add('hide'); setTimeout(() => (splash.hidden = true), 300); }
+      await showLockScreen(auth.deviceId); // se resuelve al activarse
+    } else {
+      // Ya autorizado: comprobar en 2º plano si fue revocado desde GitHub.
+      checkRevocation().then((revoked) => {
+        if (revoked) { toast('⛔ Este teléfono fue desautorizado'); setTimeout(() => location.reload(), 1500); }
+      }).catch(() => {});
+    }
+  } catch (_) { /* si el chequeo falla, no dejamos fuera al usuario */ }
+
   wireHeader();
   wireBackButton();
 
