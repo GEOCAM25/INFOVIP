@@ -238,3 +238,14 @@ textarea.input { resize: vertical; min-height: 90px; }
 .admin-code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 15px;
   font-weight: 700; color: var(--metal-hi); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; letter-spacing: .5px; }
+
+/* Deslizador (rango) */
+.range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 6px;
+  background: var(--surface-2b); outline: none; margin: 6px 0; }
+.range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--blue-400); border: 2px solid var(--metal-hi); cursor: pointer; }
+.range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--blue-400); border: 2px solid var(--metal-hi); cursor: pointer; }
+
+/* Mapa de Leaflet dentro del tema oscuro */
+.leaflet-container { background: #0c1a33; font: inherit; }
+.leaflet-control-zoom a { background: var(--surface-2); color: var(--text); border-color: var(--border); }

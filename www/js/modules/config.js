@@ -170,6 +170,35 @@ function buildDeviceAdmin() {
             )
           )
         );
+        // Área permitida (cerca geográfica)
+        const gfMod = await import('../core/geofence.js');
+        const gfInfo = h('div', { class: 'hint' }, '📍 ' + gfMod.describeGeofence());
+        const jsonBox = h('div', { class: 'hint', style: 'display:none' });
+        const paintJson = () => {
+          const g = gfMod.getLocalGeofence();
+          if (!g) { jsonBox.style.display = 'none'; return; }
+          jsonBox.style.display = 'block';
+          jsonBox.innerHTML = 'Para aplicarla a TODOS los teléfonos, envíame esto para ponerlo en GitHub:';
+          jsonBox.appendChild(h('div', { class: 'admin-row', style: 'margin-top:6px' },
+            h('code', { class: 'admin-code', style: 'font-size:11px;word-break:break-all' }, '"geofence": ' + JSON.stringify(g)),
+            h('button', { class: 'btn ghost small', onClick: () => copy('"geofence": ' + JSON.stringify(g)) }, '📋')
+          ));
+        };
+        adminBox.appendChild(h('div', { class: 'field', style: 'margin-top:12px' },
+          h('label', {}, 'Área permitida (mapa)'),
+          gfInfo,
+          h('div', { class: 'btn-row', style: 'margin-top:6px' },
+            h('button', { class: 'btn primary sm', onClick: async () => {
+              const { pickArea } = await import('../core/mappicker.js');
+              const g = gfMod.getLocalGeofence() || gfMod.getRemoteGeofence() || {};
+              const res = await pickArea(g);
+              if (res) { gfMod.setLocalGeofence(res); gfInfo.textContent = '📍 ' + gfMod.describeGeofence(); paintJson(); toast('Área guardada en este teléfono'); }
+            } }, '🗺️ Definir en el mapa'),
+            h('button', { class: 'btn ghost sm', onClick: () => { gfMod.setLocalGeofence(null); gfInfo.textContent = '📍 ' + gfMod.describeGeofence(); paintJson(); toast('Área local borrada'); } }, 'Quitar área local')
+          ),
+          jsonBox
+        ));
+        paintJson();
       });
     }
   }).catch(() => { wrap.appendChild(h('div', { class: 'hint' }, 'No se pudo cargar el panel.')); });

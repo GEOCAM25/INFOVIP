@@ -14,6 +14,7 @@ import { requestAll, backgroundLocationHint } from './core/permissions.js';
 import { checkUpdate, showUpdateBanner } from './core/appupdate.js';
 import { checkAuthorization, checkRevocation } from './core/deviceauth.js';
 import { showLockScreen } from './core/lockscreen.js';
+import { checkGeofence, activeGeofence } from './core/geofence.js';
 
 // Importar los módulos registra sus rutas (efecto de carga).
 import './modules/inicio.js';
@@ -48,6 +49,20 @@ function wireBackButton() {
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') onBack(false); });
 }
 
+// Vigila que el teléfono siga dentro del área permitida. Si sale, bloquea;
+// cuando vuelve a entrar, la pantalla de bloqueo se cierra sola.
+async function startGeoGuard(deviceId) {
+  if (!activeGeofence()) return; // sin área definida: nada que vigilar
+  const run = async () => {
+    const st = await checkGeofence().catch(() => 'unknown');
+    if (st === 'outside' && !document.querySelector('.lock-overlay')) {
+      showLockScreen(deviceId).catch(() => {});
+    }
+  };
+  await run();
+  setInterval(run, 60000);
+}
+
 function showApp() {
   document.getElementById('app-header').hidden = false;
   document.getElementById('view').hidden = false;
@@ -73,6 +88,7 @@ async function boot() {
         if (revoked) { toast('⛔ Este teléfono fue desautorizado'); setTimeout(() => location.reload(), 1500); }
       }).catch(() => {});
     }
+    startGeoGuard(auth.deviceId);
   } catch (_) { /* si el chequeo falla, no dejamos fuera al usuario */ }
 
   wireHeader();

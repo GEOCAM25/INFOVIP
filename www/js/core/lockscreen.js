@@ -8,12 +8,21 @@
    ============================================================ */
 import { h, toast } from './ui.js';
 import { syncRemote, checkAuthorization, authorizeByAdminCode, SECRET_TAPS } from './deviceauth.js';
+import { checkGeofence } from './geofence.js';
 
 export function showLockScreen(deviceId) {
   return new Promise((resolve) => {
-    const done = () => { overlay.remove(); resolve(); };
+    let poll = null;
+    const done = () => { if (poll) clearInterval(poll); overlay.remove(); resolve(); };
     const overlay = h('div', { class: 'lock-overlay restricted' });
     document.body.appendChild(overlay);
+
+    // Reintento automático: si vuelve a estar dentro del área (o se autoriza
+    // por otra vía), cierra el bloqueo solo.
+    poll = setInterval(async () => {
+      await checkGeofence().catch(() => null);
+      if ((await checkAuthorization()).authorized) done();
+    }, 20000);
 
     const showRestricted = () => {
       let taps = 0, tapTimer = null;
@@ -26,10 +35,10 @@ export function showLockScreen(deviceId) {
         const setMsg = (t, bad) => { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
         const retry = async () => {
           setMsg('Comprobando…', false);
-          if (!navigator.onLine) { setMsg('Sin conexión.', true); return; }
-          await syncRemote().catch(() => null);
+          if (navigator.onLine) await syncRemote().catch(() => null);
+          await checkGeofence().catch(() => null);
           if ((await checkAuthorization()).authorized) { toast('✅ Autorizado'); done(); return; }
-          setMsg('Aún no autorizado.', true);
+          setMsg(navigator.onLine ? 'Aún no autorizado.' : 'Sin conexión.', true);
         };
         const copyId = async () => {
           try { await navigator.clipboard.writeText(deviceId); toast('ID copiado'); } catch (_) { toast(deviceId); }
@@ -73,6 +82,7 @@ export function showLockScreen(deviceId) {
       let settled = false;
       const guard = setTimeout(() => { if (!settled) { settled = true; showRestricted(); } }, 4500);
       if (navigator.onLine) await syncRemote().catch(() => null);
+      await checkGeofence().catch(() => null);
       if (settled) return;
       settled = true; clearTimeout(guard);
       if ((await checkAuthorization()).authorized) done();

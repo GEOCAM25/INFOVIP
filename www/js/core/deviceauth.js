@@ -21,6 +21,7 @@
    ============================================================ */
 import { device } from './native.js';
 import { prefs } from './store.js';
+import { isGeoBlocked, setRemoteGeofence } from './geofence.js';
 
 // ¿Se exige autorización en esta compilación? true en producción.
 export const LOCK_ENABLED = true;
@@ -161,6 +162,7 @@ async function fetchList() {
 export async function syncRemote() {
   const list = await fetchList();
   if (!list) return null; // sin conexión: no renueva el plazo (kill-switch)
+  setRemoteGeofence(list.geofence || null); // área permitida global (opcional)
   const fp = normId(await getDeviceId()); const hash = await getDeviceHash();
   if (await listIncludes(list.revoked, fp, hash)) { setRevoked(true); setGranted(false); setSource(''); clearLease(); return 'revoked'; }
   setRevoked(false);
@@ -175,8 +177,9 @@ export async function syncRemote() {
 export async function checkAuthorization() {
   const deviceId = await getDeviceId();
   if (!LOCK_ENABLED) return { authorized: true, deviceId };
-  if (await bakedIn()) return { authorized: true, deviceId }; // incrustado: permanente
   if (isRevoked()) return { authorized: false, deviceId };
+  if (isGeoBlocked()) return { authorized: false, deviceId }; // fuera del área permitida
+  if (await bakedIn()) return { authorized: true, deviceId }; // incrustado: permanente
   return { authorized: isAuthorizedLocal() && leaseValid(), deviceId };
 }
 

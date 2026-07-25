@@ -1,5 +1,7 @@
 {
   "_ayuda": "Lista central de telefonos autorizados de INFOVIP. SOLO el dueno del repositorio puede editar este archivo (que el repo sea publico no permite que otros escriban). Para autorizar un telefono, agrega su entrada en 'authorized'. Para bloquearlo (p.ej. telefono perdido), quitalo de 'authorized' o ponlo en 'revoked'; queda bloqueado la proxima vez que ese telefono tenga internet, sin actualizar la app. Cada entrada puede ser la huella legible 'INV-XXXX-XXXX', su hash SHA-256, o un objeto {\"name\":\"Juan\",\"hash\":\"...\"}. Se recomienda usar hash + name para no exponer los IDs. Editar este archivo NO recompila la app.",
+  "_ayuda_geofence": "Opcional: 'geofence' define el area donde la app funciona. Fuera de ella el telefono se bloquea. Puede ser un circulo {\"lat\":-33.611,\"lon\":-70.576,\"radius\":6000} (radius en metros) o un poligono {\"polygon\":[[lat,lon],[lat,lon],...]}. Quitalo o ponlo en null para no restringir por ubicacion.",
+  "geofence": null,
   "authorized": [],
   "revoked": []
 }
