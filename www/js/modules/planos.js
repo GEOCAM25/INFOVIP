@@ -240,44 +240,55 @@ async function openViewer(plano) {
       btnLayers.hidden = false;
       infoBase = `${doc.numPages} pág. · ${ids.length} capas`;
       info.textContent = infoBase;
-      btnLayers.addEventListener('click', () => openLayers(groups, ids, locked, () => renderAll()));
+      // repaint rápido (basePR) para que no se cuelgue al cambiar capas
+      const repaintFast = async () => { currentPR = basePR; await renderAll(basePR); };
+      btnLayers.addEventListener('click', () => openLayers(groups, ids, locked, repaintFast));
     }
   } catch (e) {
     layer.appendChild(emptyState('⚠️', 'No se pudo renderizar el PDF.'));
     console.error(e);
   }
 
-  /* ---- Panel de capas: fijar (candado) + aislar al tocar ---- */
+  /* ---- Panel de capas: tocar = ver SOLO esa (+ cierra); ➕ = sumar; 🔒 = fijar ---- */
   function openLayers(groups, ids, locked, repaint) {
-    sheet('Capas del plano', (body) => {
-      body.appendChild(h('div', { class: 'btn-row', style: 'margin-bottom:12px' },
-        h('button', { class: 'btn ghost sm', onClick: () => { ids.forEach((id) => ocConfig.setVisibility(id, true)); repaint(); refresh(); toast('Todas visibles'); } }, '👁  Mostrar todas')));
+    sheet('Capas del plano', (body, api) => {
+      body.appendChild(h('div', { class: 'hint', style: 'margin:0 0 12px' },
+        'Toca una capa para ver SOLO esa. Usa ➕ para sumar otra. 🔒 fija una capa (siempre visible). Las fijadas quedan al final.'));
+      body.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-bottom:12px', onClick: async () => { ids.forEach((id) => ocConfig.setVisibility(id, true)); await repaint(); api.close(); toast('Todas visibles'); } }, '👁  Mostrar todas'));
       const listWrap = h('div');
       body.appendChild(listWrap);
+      // Orden: no fijadas primero, fijadas al final.
+      const ordered = () => [...ids].sort((a, b) => (locked.has(a) ? 1 : 0) - (locked.has(b) ? 1 : 0));
       function refresh() {
         listWrap.innerHTML = '';
-        ids.forEach((id) => {
+        ordered().forEach((id) => {
           const name = (groups[id] && groups[id].name) || id;
           const isLocked = locked.has(id);
           const vis = ocConfig.isVisible(id);
-          const lockBtn = h('button', { class: 'btn ' + (isLocked ? 'primary' : 'ghost') + ' sm', style: 'width:auto' }, isLocked ? '🔒 Fijada' : '🔓 Fijar');
-          lockBtn.addEventListener('click', (ev) => {
+          const actions = h('div', { class: 'row', style: 'gap:6px' });
+          if (!isLocked) {
+            const addBtn = h('button', { class: 'btn ghost sm', style: 'width:auto', title: 'Sumar' }, '➕');
+            addBtn.addEventListener('click', async (ev) => { ev.stopPropagation(); ocConfig.setVisibility(id, true); await repaint(); api.close(); toast('Sumada: ' + name); });
+            actions.appendChild(addBtn);
+          }
+          const lockBtn = h('button', { class: 'btn ' + (isLocked ? 'primary' : 'ghost') + ' sm', style: 'width:auto' }, isLocked ? '🔒' : 'Fijar');
+          lockBtn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
             if (locked.has(id)) locked.delete(id);
             else { locked.add(id); ocConfig.setVisibility(id, true); }
-            prefs.set(lockKey, [...locked]); repaint(); refresh();
+            prefs.set(lockKey, [...locked]); await repaint(); refresh();
           });
+          actions.appendChild(lockBtn);
           const row = h('div', { class: 'reorder-item', style: 'touch-action:auto;cursor:pointer' },
             h('span', { class: 'ri-ico' }, isLocked ? '🔒' : (vis ? '👁' : '🚫')),
             h('span', { class: 'ri-name', style: vis ? '' : 'opacity:.45' }, esc(name)),
-            lockBtn);
-          // Tocar la fila = aislar esa capa (+ las fijadas)
-          row.addEventListener('click', () => { ids.forEach((x) => ocConfig.setVisibility(x, x === id || locked.has(x))); repaint(); refresh(); toast('Solo: ' + name); });
+            actions);
+          // Tocar la fila = ver SOLO esa (+ fijadas) y CERRAR el panel.
+          row.addEventListener('click', async () => { ids.forEach((x) => ocConfig.setVisibility(x, x === id || locked.has(x))); await repaint(); api.close(); toast('Solo: ' + name); });
           listWrap.appendChild(row);
         });
       }
       refresh();
-      body.appendChild(h('div', { class: 'hint', style: 'margin-top:12px' }, 'Toca una capa para ver SOLO esa (más las fijadas). “Fijar” 🔒 mantiene una capa siempre visible aunque aísles otras.'));
     }, `${ids.length} capas`);
   }
 }
