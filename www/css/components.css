@@ -218,6 +218,18 @@ textarea.input { resize: vertical; min-height: 90px; }
 .lock-field { text-align: left; margin-bottom: 8px; }
 .lock-field .lock-idlabel { margin-bottom: 8px; }
 .lock-msg { min-height: 18px; font-size: 13px; color: var(--ok); margin: 4px 0 14px; }
+
+/* Pantalla mínima de acceso restringido (sin pistas) */
+.lock-overlay.restricted { background: #04060c; }
+.lock-restricted { display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 24px; text-align: center; }
+.lock-diamond { width: 82px; height: 82px; transform: rotate(45deg); border-radius: 14px;
+  background: linear-gradient(135deg, #101d33, #0a1322);
+  border: 2px solid #2c466f; box-shadow: 0 0 0 7px rgba(44, 70, 111, 0.10), 0 10px 30px rgba(0, 0, 0, 0.6);
+  position: relative; -webkit-tap-highlight-color: transparent; }
+.lock-diamond::after { content: ''; position: absolute; inset: 20px; border: 2px solid #46639a; border-radius: 6px; opacity: 0.45; }
+.lock-restricted-txt { letter-spacing: 2.5px; font-size: 13.5px; font-weight: 700; color: #56698f; }
+.lock-enroll { margin-top: 6px; max-width: 300px; }
+.btn.primary.small { padding: 7px 12px; font-size: 12.5px; }
 .lock-msg.bad { color: var(--danger); }
 .btn.small { padding: 7px 12px; font-size: 12.5px; }
 

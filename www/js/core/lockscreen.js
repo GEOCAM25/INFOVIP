@@ -1,69 +1,72 @@
 /* ============================================================
-   INFOVIP · Pantalla "No autorizado"
-   Sin códigos: la única forma de entrar es que el administrador
-   añada el ID de este teléfono a la lista. La pantalla muestra el
-   ID (para copiarlo y enviárselo al admin) y un botón "Reintentar"
-   que vuelve a leer la lista de GitHub. Al abrirse, comprueba sola
-   la lista y se cierra si el teléfono ya quedó autorizado.
+   INFOVIP · Pantalla de ACCESO RESTRINGIDO
+   A un teléfono no autorizado NO se le da ninguna pista: solo un
+   rombo y el texto "ACCESO RESTRINGIDO A LA APP". El ID del equipo
+   (para que el administrador lo habilite) queda oculto y solo aparece
+   con un gesto secreto: tocar el rombo 5 veces seguidas.
+   Al abrirse comprueba en silencio la lista; si ya está autorizado,
+   entra sin mostrar nada.
    ============================================================ */
 import { h, toast } from './ui.js';
 import { syncRemote, checkAuthorization } from './deviceauth.js';
 
-// Muestra el bloqueo y resuelve cuando el teléfono queda autorizado.
 export function showLockScreen(deviceId) {
   return new Promise((resolve) => {
     const done = () => { overlay.remove(); resolve(); };
-
-    // Estado inicial: comprobando en silencio contra la lista remota.
-    const checking = h('div', { class: 'lock-card' },
-      h('img', { src: './assets/icons/logo.png', alt: 'INFOVIP', class: 'lock-logo' }),
-      h('div', { class: 'lock-title' }, 'Comprobando…'),
-      h('p', { class: 'lock-sub' }, 'Verificando autorización de este teléfono.')
-    );
-    const overlay = h('div', { class: 'lock-overlay' }, checking);
+    const overlay = h('div', { class: 'lock-overlay restricted' });
     document.body.appendChild(overlay);
 
-    const buildCard = () => {
-      const msg = h('div', { class: 'lock-msg' }, '');
-      const setMsg = (t, bad) => { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
+    const showRestricted = () => {
+      let taps = 0, tapTimer = null;
+      const diamond = h('div', { class: 'lock-diamond', role: 'img', 'aria-label': 'Acceso restringido' });
+      const enroll = h('div', { class: 'lock-enroll' });
+      enroll.hidden = true;
 
-      const retry = async () => {
-        setMsg('Comprobando…', false);
-        if (!navigator.onLine) { setMsg('Sin conexión. Conéctate a internet para que se habilite.', true); return; }
-        await syncRemote().catch(() => null);
-        if ((await checkAuthorization()).authorized) { toast('✅ Teléfono autorizado'); done(); return; }
-        setMsg('Aún no está habilitado. Pídele al administrador que agregue tu ID.', true);
-      };
-      const copyId = async () => {
-        try { await navigator.clipboard.writeText(deviceId); toast('ID copiado'); } catch (_) { toast(deviceId); }
-      };
-
-      const card = h('div', { class: 'lock-card' },
-        h('img', { src: './assets/icons/logo.png', alt: 'INFOVIP', class: 'lock-logo' }),
-        h('div', { class: 'lock-title' }, 'Teléfono no autorizado'),
-        h('p', { class: 'lock-sub' }, 'Esta app solo funciona en teléfonos autorizados. Copia tu ID y envíaselo al administrador para que habilite este teléfono.'),
-        h('div', { class: 'lock-idbox' },
+      const buildEnroll = () => {
+        const msg = h('div', { class: 'lock-msg' }, '');
+        const setMsg = (t, bad) => { msg.textContent = t; msg.classList.toggle('bad', !!bad); };
+        const retry = async () => {
+          setMsg('Comprobando…', false);
+          if (!navigator.onLine) { setMsg('Sin conexión.', true); return; }
+          await syncRemote().catch(() => null);
+          if ((await checkAuthorization()).authorized) { toast('✅ Autorizado'); done(); return; }
+          setMsg('Aún no autorizado.', true);
+        };
+        const copyId = async () => {
+          try { await navigator.clipboard.writeText(deviceId); toast('ID copiado'); } catch (_) { toast(deviceId); }
+        };
+        enroll.replaceChildren(
           h('div', { class: 'lock-idlabel' }, 'ID de este teléfono'),
           h('div', { class: 'lock-id' }, deviceId),
-          h('button', { class: 'btn ghost small', onClick: copyId }, '📋 Copiar ID')
-        ),
-        msg,
-        h('div', { class: 'btn-row' },
-          h('button', { class: 'btn primary', onClick: retry }, '🔄 Ya me habilitaron · Reintentar')
-        )
-      );
-      overlay.replaceChildren(card);
+          h('div', { class: 'btn-row', style: 'justify-content:center;margin-top:6px' },
+            h('button', { class: 'btn ghost small', onClick: copyId }, '📋 Copiar ID'),
+            h('button', { class: 'btn primary small', onClick: retry }, '🔄 Reintentar')
+          ),
+          msg
+        );
+      };
+
+      diamond.addEventListener('click', () => {
+        taps++; clearTimeout(tapTimer); tapTimer = setTimeout(() => (taps = 0), 2500);
+        if (taps >= 5) { taps = 0; if (enroll.hidden) { buildEnroll(); enroll.hidden = false; } }
+      });
+
+      overlay.replaceChildren(h('div', { class: 'lock-restricted' },
+        diamond,
+        h('div', { class: 'lock-restricted-txt' }, 'ACCESO RESTRINGIDO A LA APP'),
+        enroll
+      ));
     };
 
     // Comprobación remota silenciosa (con tope de tiempo para no colgarse).
     (async () => {
       let settled = false;
-      const guard = setTimeout(() => { if (!settled) { settled = true; buildCard(); } }, 4500);
+      const guard = setTimeout(() => { if (!settled) { settled = true; showRestricted(); } }, 4500);
       if (navigator.onLine) await syncRemote().catch(() => null);
       if (settled) return;
       settled = true; clearTimeout(guard);
       if ((await checkAuthorization()).authorized) done();
-      else buildCard();
+      else showRestricted();
     })();
   });
 }

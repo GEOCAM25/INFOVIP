@@ -1,5 +1,5 @@
 {
-  "_ayuda": "Lista central de telefonos autorizados de INFOVIP. Edita este archivo en GitHub para habilitar o revocar telefonos. Cada ID tiene el formato INV-XXXX-XXXX y lo muestra la app en la pantalla de 'No autorizado' y en Ajustes. Pon el ID en 'authorized' para habilitar; ponlo en 'revoked' para bloquearlo aunque ya tuviera codigo. Los cambios aplican la proxima vez que el telefono abra la app con internet.",
+  "_ayuda": "Lista central de telefonos autorizados de INFOVIP. SOLO el dueno del repositorio puede editar este archivo (que el repo sea publico no permite que otros escriban). Para autorizar un telefono, agrega su entrada en 'authorized'. Para bloquearlo (p.ej. telefono perdido), quitalo de 'authorized' o ponlo en 'revoked'; queda bloqueado la proxima vez que ese telefono tenga internet, sin actualizar la app. Cada entrada puede ser la huella legible 'INV-XXXX-XXXX', su hash SHA-256, o un objeto {\"name\":\"Juan\",\"hash\":\"...\"}. Se recomienda usar hash + name para no exponer los IDs. Editar este archivo NO recompila la app.",
   "authorized": [],
   "revoked": []
 }

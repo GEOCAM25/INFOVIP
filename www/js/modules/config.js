@@ -126,16 +126,29 @@ function buildDeviceAdmin() {
     ));
 
     // Estado + re-consulta de la lista
-    const status = h('div', { class: 'hint', style: 'margin-top:2px' },
-      da.isAuthorizedLocal() ? '✅ Este teléfono está autorizado.' : '⏳ Autorización pendiente.');
+    const paint = async () => { const a = await da.checkAuthorization(); return a.authorized ? '✅ Este teléfono está autorizado.' : '⏳ Autorización pendiente.'; };
+    const status = h('div', { class: 'hint', style: 'margin-top:2px' }, await paint());
     wrap.appendChild(status);
     wrap.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-top:8px', onClick: async () => {
       if (!navigator.onLine) { toast('Sin conexión'); return; }
       const r = await da.syncRemote();
       toast(r === 'authorized' ? '✅ Autorizado' : r === 'revoked' ? '⛔ Desautorizado' : 'Consultado (sin cambios)');
-      status.textContent = da.isAuthorizedLocal() ? '✅ Este teléfono está autorizado.' : '⏳ Autorización pendiente.';
+      status.textContent = await paint();
     } }, '🔄  Buscar autorización'));
-    wrap.appendChild(h('div', { class: 'hint' }, 'Para autorizar otro teléfono, envíame su ID (lo muestra en la pantalla de bloqueo) y yo lo agrego a tu lista. Nadie puede habilitarse por su cuenta.'));
+
+    // Huella (hash) para agregar a la lista sin exponer el ID (uso avanzado).
+    const hashBtn = h('button', { class: 'btn ghost sm', style: 'margin-top:6px', onClick: async () => {
+      const hh = await da.getDeviceHash();
+      hashBtn.replaceWith(h('div', { class: 'field' },
+        h('label', {}, 'Huella (hash) de este teléfono'),
+        h('div', { class: 'admin-row' },
+          h('code', { class: 'admin-code', style: 'font-size:11px;word-break:break-all' }, hh),
+          h('button', { class: 'btn ghost small', onClick: () => copy(hh) }, '📋')
+        )
+      ));
+    } }, '🔑  Ver huella para la lista');
+    wrap.appendChild(hashBtn);
+    wrap.appendChild(h('div', { class: 'hint' }, 'Para autorizar otro teléfono, envíame su ID (aparece tocando el rombo 5 veces en la pantalla de bloqueo) y yo lo agrego a tu lista. Nadie puede habilitarse por su cuenta.'));
   }).catch(() => { wrap.appendChild(h('div', { class: 'hint' }, 'No se pudo cargar el panel.')); });
 
   return wrap;
