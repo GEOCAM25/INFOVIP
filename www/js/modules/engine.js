@@ -20,6 +20,7 @@ let running = false;
 let watching = false;    // ¿servicio de ubicación en 2º plano activo?
 const firedCooldown = new Map(); // id -> timestamp del último disparo
 const firedToday = new Map();    // id -> 'YYYY-MM-DD' (reglas por horario/sol)
+const matchState = new Map();    // id -> bool (para disparar por BORDE: falso→verdadero)
 
 const COOLDOWN_MS = 60 * 1000; // no re-disparar la misma regla dentro de 1 min
 
@@ -135,7 +136,12 @@ async function evaluateAll(source) {
   const bat = await device.battery().catch(() => ({ level: null, charging: null }));
 
   for (const rule of enabled) {
-    if (await matches(rule, bat)) {
+    const isMatch = await matches(rule, bat);
+    const was = matchState.get(rule.id) || false;
+    matchState.set(rule.id, isMatch);
+    // Disparo por BORDE: solo cuando pasa de "no se cumple" a "se cumple".
+    // (Evita re-sonar mientras la condición sigue verdadera, p.ej. al recargar.)
+    if (isMatch && !was) {
       const last = firedCooldown.get(rule.id) || 0;
       if (Date.now() - last < COOLDOWN_MS) continue;
       firedCooldown.set(rule.id, Date.now());
@@ -156,7 +162,14 @@ async function matches(rule, bat) {
   if (c.battery && c.battery.op) {
     if (bat.level == null) return false;
     const v = bat.level, t = Number(c.battery.value);
-    checks.push(c.battery.op === 'lt' ? v < t : c.battery.op === 'gt' ? v > t : v === t);
+    const cond = c.battery.op === 'lt' ? v < t : c.battery.op === 'gt' ? v > t : v === t;
+    // Dirección de carga: avisos "bajos" (< o =) solo al DESCARGAR;
+    // "altos" (>) solo al CARGAR. Así el aviso de "carga el teléfono" no
+    // suena cuando ya lo estás cargando y sube de vuelta a 30%.
+    let dirOk = true;
+    if (bat.charging === true) dirOk = (c.battery.op === 'gt');
+    else if (bat.charging === false) dirOk = (c.battery.op !== 'gt');
+    checks.push(cond && dirOk);
   }
   if (!checks.length) return false;
   // Lógica AND (todas deben cumplirse). 'match' guarda modo por si se amplía.
@@ -196,8 +209,13 @@ async function fire(rule) {
   }
 
   // 3) Notificación (llega en segundo plano; su canal aporta sonido/vibración)
-  notify('⚡ ' + (rule.name || 'Automatización'), describeFire(rule), { channelId, sound: soundFile });
-  toast(`⚡ ${rule.name}`);
+  const cc = rule.conditions || {};
+  const emoji = cc.time && cc.time.at ? '⏰'
+    : cc.sun && cc.sun.event ? (cc.sun.event === 'sunset' ? '🌇' : '🌅')
+    : cc.location && cc.location.lat != null ? '📍'
+    : cc.battery && cc.battery.op ? '🔋' : '⚡';
+  notify(`${emoji} ${rule.name || 'Automatización'}`, describeFire(rule), { channelId, sound: soundFile });
+  toast(`${emoji} ${rule.name}`);
 }
 
 function playUrl(url, volume, loop, revoke) {

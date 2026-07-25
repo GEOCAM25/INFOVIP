@@ -70,12 +70,13 @@ async function openViewer(plano) {
   // Overlay a pantalla completa
   const info = h('span', { class: 'pdfv-info' }, 'Cargando…');
   const btnLayers = h('button', { class: 'pdfv-btn', title: 'Capas', hidden: true }, '🗂');
+  const btnRotate = h('button', { class: 'pdfv-btn', title: 'Girar' }, '↻');
   const btnDark = h('button', { class: 'pdfv-btn', title: 'Modo lectura' }, '🌓');
   const btnReset = h('button', { class: 'pdfv-btn', title: 'Ajustar' }, '⤢');
   const btnClose = h('button', { class: 'pdfv-btn', title: 'Cerrar' }, '✕');
   const bar = h('div', { class: 'pdfv-bar' },
     h('span', { class: 'pdfv-title' }, esc(plano.name)), info,
-    h('div', { class: 'pdfv-actions' }, btnLayers, btnDark, btnReset, btnClose));
+    h('div', { class: 'pdfv-actions' }, btnLayers, btnRotate, btnDark, btnReset, btnClose));
   const layer = h('div', { class: 'pdfv-layer' });
   const stage = h('div', { class: 'pdfv-stage' }, layer);
   const overlay = h('div', { class: 'pdfv-overlay' }, bar, stage);
@@ -102,6 +103,7 @@ async function openViewer(plano) {
     btnDark.classList.toggle('on', dark);
   }
   btnDark.addEventListener('click', () => { dark = !dark; applyDark(); });
+  btnRotate.addEventListener('click', async () => { rotation = (rotation + 90) % 360; await renderAll(); fit(); });
 
   /* ---- Gestos: pellizco (pinch) para zoom, un dedo para paneo, doble toque para ajustar ---- */
   const pts = new Map();
@@ -138,7 +140,7 @@ async function openViewer(plano) {
     if (pts.size === 2) {
       const arr = [...pts.values()];
       const d = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
-      const ns = Math.min(6, Math.max(minScale, startScale * (d / (startDist || d))));
+      const ns = Math.min(10, Math.max(minScale, startScale * (d / (startDist || d))));
       tx = startMid.x - (startMid.x - startTx) * (ns / startScale);
       ty = startMid.y - (startMid.y - startTy) * (ns / startScale);
       scale = ns; apply();
@@ -155,7 +157,7 @@ async function openViewer(plano) {
   stage.addEventListener('wheel', (e) => {
     e.preventDefault();
     const r = rect(); const mx = e.clientX - r.left, my = e.clientY - r.top;
-    const ns = Math.min(6, Math.max(minScale, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+    const ns = Math.min(10, Math.max(minScale, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
     tx = mx - (mx - tx) * (ns / scale); ty = my - (my - ty) * (ns / scale);
     scale = ns; apply(); scheduleQuality();
   }, { passive: false });
@@ -173,11 +175,13 @@ async function openViewer(plano) {
   const lowEnd = mem <= 2;
   const basePR = Math.min(window.devicePixelRatio || 1, lowEnd ? 2 : 3); // nitidez base
   const MAX_CANVAS = lowEnd ? 3200 : 6000;                               // tope px por lado
-  let currentPR = basePR, qTimer = null;
+  let currentPR = basePR, qTimer = null, rotation = 0;
 
   async function renderEntry(entry, pr) {
-    const scaleR = (entry.cssWidth * pr) / entry.base.width;
-    const vp = entry.page.getViewport({ scale: scaleR });
+    const rot90 = (rotation % 180) !== 0;
+    const wUnit = rot90 ? entry.base.height : entry.base.width; // ancho visible según rotación
+    const scaleR = (entry.cssWidth * pr) / wUnit;
+    const vp = entry.page.getViewport({ scale: scaleR, rotation });
     entry.canvas.width = Math.round(vp.width);
     entry.canvas.height = Math.round(vp.height);
     entry.canvas.style.width = entry.cssWidth + 'px';
@@ -211,6 +215,8 @@ async function openViewer(plano) {
     const buf = await plano.blob.arrayBuffer();
     doc = await lib.getDocument({ data: buf }).promise;
     ocConfig = await doc.getOptionalContentConfig().catch(() => null);
+    // Plano apaisado (más ancho que alto) → rotar 90° para llenar la pantalla.
+    try { const p1 = await doc.getPage(1); const b1 = p1.getViewport({ scale: 1 }); if (b1.width > b1.height * 1.15) rotation = 90; } catch (_) {}
     const targetCss = stage.clientWidth - 8;
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);

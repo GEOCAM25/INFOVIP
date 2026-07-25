@@ -8,16 +8,26 @@ import { visibleTabs, byId } from './tabs.js';
 
 const routes = new Map();      // id -> { render, title }
 let current = null;
+let history = [];              // pila de vistas visitadas (para el botón atrás)
 
 export function register(id, def) { routes.set(id, def); }
+export function canGoBack() { return history.length > 0; }
+export async function goBack() {
+  const prev = history.pop();
+  if (prev != null) await go(prev, {}, true);
+}
 
 const viewEl = () => document.getElementById('view');
 const titleEl = () => document.getElementById('header-title');
 const tabbarEl = () => document.getElementById('tabbar');
 
-export async function go(id, params = {}) {
+export async function go(id, params = {}, isBack = false) {
   const route = routes.get(id);
   if (!route) return;
+  if (current && current !== id && !isBack) {
+    if (history[history.length - 1] !== current) history.push(current);
+    if (history.length > 30) history.shift();
+  }
   current = id;
   const container = clear(viewEl());
   titleEl().textContent = route.title || (byId(id)?.name ?? 'INFOVIP');

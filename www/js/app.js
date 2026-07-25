@@ -9,7 +9,7 @@ import { initServiceWorker } from './core/update.js';
 import { openSettings } from './modules/config.js';
 import { prefs, KEYS } from './core/store.js';
 import { h, sheet, toast, closeTopOverlay } from './core/ui.js';
-import { currentId } from './core/router.js';
+import { currentId, canGoBack, goBack } from './core/router.js';
 import { requestAll, backgroundLocationHint } from './core/permissions.js';
 import { checkUpdate, showUpdateBanner } from './core/appupdate.js';
 
@@ -35,10 +35,11 @@ function wireBackButton() {
   // Android: botón físico "atrás". Cierra hoja/visor; si no hay, va a Inicio; si ya está, sale.
   const App = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.App : null;
   const onBack = (canExit) => {
-    if (closeTopOverlay()) return;
+    if (closeTopOverlay()) return;      // 1) cerrar hoja/visor abierto
+    if (canGoBack()) { goBack(); return; } // 2) volver a la pantalla anterior
     const home = getHome();
-    if (currentId() !== home) { go(home); return; }
-    if (canExit && App && App.exitApp) App.exitApp();
+    if (currentId() !== home) { go(home); return; } // 3) ir a Inicio
+    if (canExit && App && App.exitApp) App.exitApp(); // 4) salir
   };
   if (App && App.addListener) App.addListener('backButton', () => onBack(true));
   // Web / pruebas: tecla Escape cierra la hoja superior.
