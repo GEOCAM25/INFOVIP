@@ -86,6 +86,21 @@ export function askPin(title = 'Ingresa el PIN', sub = '') {
   });
 }
 
+// Cierra la hoja/overlay superior (para el botón "atrás" de Android y Escape).
+// Devuelve true si cerró algo.
+export function closeTopOverlay() {
+  const sheets = document.querySelectorAll('.sheet-backdrop');
+  if (sheets.length) {
+    const s = sheets[sheets.length - 1];
+    s.style.animation = 'fade .18s reverse';
+    setTimeout(() => s.remove(), 150);
+    return true;
+  }
+  const pdf = document.querySelector('.pdfv-overlay');
+  if (pdf) { pdf.remove(); return true; }
+  return false;
+}
+
 export function emptyState(icon, text) {
   return h('div', { class: 'empty' }, h('div', { class: 'em-ico' }, icon), h('p', {}, text));
 }

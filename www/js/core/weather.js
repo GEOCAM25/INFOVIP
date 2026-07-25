@@ -46,3 +46,22 @@ export async function lastWeather() {
   const c = await db.get('cache', 'weather').catch(() => null);
   return c ? { data: c.value, savedAt: c.savedAt } : null;
 }
+
+// Horas de amanecer/atardecer de HOY para la ubicación (cache por día).
+export async function getSunTimes() {
+  const today = new Date().toISOString().slice(0, 10);
+  const cached = await db.get('cache', 'sun').catch(() => null);
+  if (cached && cached.day === today && cached.sunrise) {
+    return { sunrise: new Date(cached.sunrise), sunset: new Date(cached.sunset) };
+  }
+  let coords;
+  try { const p = await geo.current(); coords = { lat: p.lat, lon: p.lon }; }
+  catch (_) { const c = await db.get('cache', 'weatherCoords').catch(() => null); coords = (c && c.value) || { lat: -33.61, lon: -70.58 }; }
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=sunrise,sunset&timezone=auto&forecast_days=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('sin conexión');
+  const d = await res.json();
+  const sr = d.daily.sunrise[0], ss = d.daily.sunset[0]; // hora local (timezone=auto)
+  await db.put('cache', { key: 'sun', day: today, sunrise: sr, sunset: ss }).catch(() => {});
+  return { sunrise: new Date(sr), sunset: new Date(ss) };
+}

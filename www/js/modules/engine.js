@@ -10,7 +10,7 @@ import { device, haptics, distanceMeters } from '../core/native.js';
 import { toast } from '../core/ui.js';
 import { prefs } from '../core/store.js';
 import { notify } from '../core/permissions.js';
-import { getCurrentWeather, summarize } from '../core/weather.js';
+import { getCurrentWeather, summarize, getSunTimes } from '../core/weather.js';
 import * as bggeo from '../core/bggeo.js';
 
 let batteryTimer = null;
@@ -19,6 +19,7 @@ let lastPos = null;
 let running = false;
 let watching = false;    // ¿servicio de ubicación en 2º plano activo?
 const firedCooldown = new Map(); // id -> timestamp del último disparo
+const firedToday = new Map();    // id -> 'YYYY-MM-DD' (reglas por horario/sol)
 
 const COOLDOWN_MS = 60 * 1000; // no re-disparar la misma regla dentro de 1 min
 
@@ -26,10 +27,11 @@ export async function startEngine() {
   if (running) return;
   running = true;
   batteryTimer = setInterval(() => evaluateAll('battery'), 20000);
-  climaTimer = setInterval(climaCheck, 60000);
+  climaTimer = setInterval(() => { climaCheck(); scheduledCheck(); }, 60000);
   await syncWatchers();
   evaluateAll('init');
   climaCheck();
+  scheduledCheck();
 }
 
 export function stopEngine() {
@@ -40,15 +42,24 @@ export function stopEngine() {
 }
 
 /* ---------- Automatización de clima ---------- */
-export function getClimaConfig() { return prefs.get('climaAuto', { enabled: false, everyHours: 1 }); }
+export function getClimaConfig() { return prefs.get('climaAuto', { enabled: false, everyHours: 1, quietFrom: '', quietTo: '' }); }
 export function setClimaConfig(cfg) {
   prefs.set('climaAuto', cfg);
   if (cfg.enabled) prefs.set('climaLast', 0); // fuerza un envío pronto
   syncWatchers();
 }
+// ¿La hora actual cae en la franja de silencio [from,to]? (soporta cruzar medianoche)
+function inQuiet(from, to) {
+  if (!from || !to) return false;
+  const now = new Date(); const n = now.getHours() * 60 + now.getMinutes();
+  const [fh, fm] = from.split(':').map(Number); const [th, tm] = to.split(':').map(Number);
+  const a = fh * 60 + fm, b = th * 60 + tm;
+  return a <= b ? (n >= a && n < b) : (n >= a || n < b); // b<a → cruza medianoche
+}
 export async function climaCheck() {
   const c = getClimaConfig();
   if (!c.enabled) return;
+  if (inQuiet(c.quietFrom, c.quietTo)) return; // en silencio: no notificar
   const last = prefs.get('climaLast', 0);
   if (Date.now() - last < (c.everyHours || 1) * 3600000) return;
   prefs.set('climaLast', Date.now());
@@ -56,6 +67,34 @@ export async function climaCheck() {
     const s = summarize(await getCurrentWeather());
     notify('🌦️ Clima', s.text, { channelId: 'inf_default' });
   } catch (_) { /* sin señal: se reintenta al próximo tick */ }
+}
+export function climaInQuiet() { const c = getClimaConfig(); return inQuiet(c.quietFrom, c.quietTo); }
+
+/* ---------- Reglas por HORARIO / SOL (amanecer/atardecer) ---------- */
+async function scheduledCheck() {
+  let rules = [];
+  try { rules = await db.getAll('automatizaciones'); } catch (_) { return; }
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const today = now.toISOString().slice(0, 10);
+  let sun = null;
+  for (const r of rules) {
+    if (!r.enabled) continue;
+    const c = r.conditions || {};
+    let target = null;
+    if (c.time && c.time.at) {
+      const [hh, mm] = c.time.at.split(':').map(Number); target = hh * 60 + mm;
+    } else if (c.sun && c.sun.event) {
+      if (!sun) { try { sun = await getSunTimes(); } catch (_) { continue; } }
+      const t = c.sun.event === 'sunset' ? sun.sunset : sun.sunrise;
+      target = t.getHours() * 60 + t.getMinutes() + (Number(c.sun.offsetMin) || 0);
+    }
+    if (target == null) continue;
+    if (nowMin === target && firedToday.get(r.id) !== today) {
+      firedToday.set(r.id, today);
+      fire(r);
+    }
+  }
 }
 // Envía el clima ahora mismo (para el botón "Probar").
 export async function fireClimaNow() {
@@ -70,8 +109,9 @@ export async function syncWatchers() {
   let rules = [];
   try { rules = await db.getAll('automatizaciones'); } catch (_) {}
   const needsLocation = rules.some((r) => r.enabled && r.conditions && r.conditions.location && r.conditions.location.lat != null);
-  // El clima también necesita mantener la app viva en 2º plano.
-  const needsAlive = needsLocation || getClimaConfig().enabled;
+  const needsScheduled = rules.some((r) => r.enabled && r.conditions && ((r.conditions.time && r.conditions.time.at) || (r.conditions.sun && r.conditions.sun.event)));
+  // Clima y reglas por horario/sol también necesitan mantener la app viva.
+  const needsAlive = needsLocation || needsScheduled || getClimaConfig().enabled;
 
   if (needsAlive && !watching) {
     watching = true;

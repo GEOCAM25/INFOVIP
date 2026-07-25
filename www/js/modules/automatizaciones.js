@@ -98,8 +98,18 @@ function climaCard() {
     h('div', {}, h('h3', { style: 'margin:0' }, '🌦️ Clima por horas'), h('div', { class: 'muted' }, 'Notificación con el clima de tu ubicación.')),
     sw));
   card.appendChild(h('div', { class: 'row between', style: 'margin-top:10px' }, h('span', { class: 'muted' }, 'Frecuencia'), sel));
+
+  // Horario de silencio (no notifica dentro de esa franja)
+  const qFrom = h('input', { class: 'input', type: 'time', style: 'width:auto', value: c.quietFrom || '' });
+  const qTo = h('input', { class: 'input', type: 'time', style: 'width:auto', value: c.quietTo || '' });
+  const saveQuiet = () => { const cfg = getClimaConfig(); cfg.quietFrom = qFrom.value; cfg.quietTo = qTo.value; setClimaConfig(cfg); toast('Silencio actualizado'); };
+  qFrom.addEventListener('change', saveQuiet); qTo.addEventListener('change', saveQuiet);
+  card.appendChild(h('div', { class: 'row between', style: 'margin-top:10px' },
+    h('span', { class: 'muted' }, '🔕 Silencio'),
+    h('div', { class: 'row', style: 'gap:6px' }, qFrom, h('span', { class: 'muted' }, 'a'), qTo)));
+
   card.appendChild(h('button', { class: 'btn ghost sm', style: 'margin-top:12px', onClick: async () => { toast('Consultando clima…'); const t = await fireClimaNow(); toast(t ? '🌦️ ' + t : 'Sin señal / permiso de ubicación'); } }, '▶️ Probar ahora'));
-  card.appendChild(h('div', { class: 'hint' }, 'Con pantalla apagada mantiene el servicio activo (notificación “INFOVIP activo”) y usa tu ubicación.'));
+  card.appendChild(h('div', { class: 'hint' }, 'Entre las horas de silencio no envía. Con pantalla apagada mantiene el servicio activo y usa tu ubicación.'));
   return card;
 }
 
@@ -108,6 +118,12 @@ function describe(rule) {
   const parts = [];
   if (c.location && c.location.lat != null) parts.push(`📍 a ${c.location.radius || 100} m del punto`);
   if (c.battery && c.battery.op) parts.push(`🔋 batería ${c.battery.op === 'lt' ? '<' : c.battery.op === 'gt' ? '>' : '='} ${c.battery.value}%`);
+  if (c.time && c.time.at) parts.push(`⏰ ${c.time.at}`);
+  if (c.sun && c.sun.event) {
+    const o = Number(c.sun.offsetMin) || 0;
+    const ev = c.sun.event === 'sunset' ? 'atardecer' : 'amanecer';
+    parts.push(o === 0 ? `🌅 ${ev}` : `🌅 ${Math.abs(o) >= 60 && Math.abs(o) % 60 === 0 ? Math.abs(o) / 60 + 'h' : Math.abs(o) + 'min'} ${o < 0 ? 'antes' : 'después'} del ${ev}`);
+  }
   const cond = parts.length ? parts.join(` ${rule.logic === 'or' ? 'O' : 'Y'} `) : 'sin condiciones';
   const mode = a.mode || (a.audioId != null ? 'propio' : 'vibrar');
   const out = ['📳 ' + (a.vibration || 'doble')];
@@ -174,6 +190,33 @@ function openEditor(root, existing) {
     const logic = h('select', { class: 'select' }, h('option', { value: 'and' }, 'Se cumplen TODAS (Y)'), h('option', { value: 'or' }, 'Cualquiera (O)'));
     logic.value = rule.logic || 'and';
     body.appendChild(field('Cómo combinar condiciones', logic));
+
+    // --- Disparo por HORARIO ---
+    body.appendChild(h('div', { class: 'divider' }));
+    body.appendChild(h('div', { class: 'sr-title' }, '⏰ Horario exacto'));
+    const timeIn = h('input', { class: 'input', type: 'time', value: rule.conditions.time?.at || '' });
+    body.appendChild(h('div', { class: 'field' }, h('label', {}, 'Hora (opcional) — dispara a esa hora'), timeIn));
+
+    // --- Disparo por SOL (amanecer/atardecer ± desfase) ---
+    body.appendChild(h('div', { class: 'sr-title' }, '🌅 Amanecer / Atardecer'));
+    const sunEvent = h('select', { class: 'select' },
+      h('option', { value: '' }, 'Sin disparo por sol'),
+      h('option', { value: 'sunrise' }, '🌅 Amanecer'),
+      h('option', { value: 'sunset' }, '🌇 Atardecer'));
+    if (rule.conditions.sun?.event) sunEvent.value = rule.conditions.sun.event;
+    const off0 = rule.conditions.sun?.offsetMin || 0;
+    const sunDir = h('select', { class: 'select' }, h('option', { value: 'after' }, 'después'), h('option', { value: 'before' }, 'antes'));
+    sunDir.value = off0 < 0 ? 'before' : 'after';
+    const sunUnit = h('select', { class: 'select' }, h('option', { value: 'min' }, 'minutos'), h('option', { value: 'hr' }, 'horas'));
+    const absOff = Math.abs(off0);
+    const sunAmt = h('input', { class: 'input', type: 'number', min: '0', value: absOff % 60 === 0 && absOff >= 60 ? absOff / 60 : absOff });
+    if (absOff % 60 === 0 && absOff >= 60) sunUnit.value = 'hr';
+    body.appendChild(field('Evento', sunEvent));
+    body.appendChild(h('div', { class: 'row', style: 'gap:8px' },
+      h('div', { style: 'width:90px' }, field('Desfase', sunAmt)),
+      h('div', { style: 'flex:1' }, field('Unidad', sunUnit)),
+      h('div', { style: 'flex:1' }, field('Antes/Después', sunDir))));
+    body.appendChild(h('div', { class: 'hint', style: 'margin-top:-6px' }, 'Ej: “Atardecer · 1 · horas · antes” = suena 1 hora antes de que se oculte el sol.'));
 
     // --- Acción: salida ---
     body.appendChild(h('div', { class: 'divider' }));
@@ -252,12 +295,19 @@ function openEditor(root, existing) {
       rule.logic = logic.value;
       if (rule.conditions.location) rule.conditions.location.radius = Number(radius.value) || 100;
       rule.conditions.battery = batOp.value ? { op: batOp.value, value: Number(batVal.value) } : null;
+      rule.conditions.time = timeIn.value ? { at: timeIn.value } : null;
+      if (sunEvent.value) {
+        const amt = Number(sunAmt.value) || 0;
+        const mins = amt * (sunUnit.value === 'hr' ? 60 : 1) * (sunDir.value === 'before' ? -1 : 1);
+        rule.conditions.sun = { event: sunEvent.value, offsetMin: mins };
+      } else rule.conditions.sun = null;
       rule.action.mode = mode.value;
       rule.action.sound = sound.value;
       rule.action.vibration = vibType.value;
       rule.action.volume = Number(vol.value);
       rule.action.loop = loop.checked;
-      if (!rule.conditions.location && !rule.conditions.battery) return toast('Define al menos una condición');
+      if (!rule.conditions.location && !rule.conditions.battery && !rule.conditions.time && !rule.conditions.sun)
+        return toast('Define al menos una condición o un horario');
       if (existing) await db.put('automatizaciones', rule);
       else { delete rule.id; await db.add('automatizaciones', rule); }
       await syncWatchers();

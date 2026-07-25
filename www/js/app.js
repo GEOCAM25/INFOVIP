@@ -8,7 +8,8 @@ import { getHome } from './core/tabs.js';
 import { initServiceWorker } from './core/update.js';
 import { openSettings } from './modules/config.js';
 import { prefs, KEYS } from './core/store.js';
-import { h, sheet, toast } from './core/ui.js';
+import { h, sheet, toast, closeTopOverlay } from './core/ui.js';
+import { currentId } from './core/router.js';
 import { requestAll, backgroundLocationHint } from './core/permissions.js';
 import { checkUpdate, showUpdateBanner } from './core/appupdate.js';
 
@@ -30,6 +31,20 @@ function wireHeader() {
   paintNet();
 }
 
+function wireBackButton() {
+  // Android: botón físico "atrás". Cierra hoja/visor; si no hay, va a Inicio; si ya está, sale.
+  const App = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.App : null;
+  const onBack = (canExit) => {
+    if (closeTopOverlay()) return;
+    const home = getHome();
+    if (currentId() !== home) { go(home); return; }
+    if (canExit && App && App.exitApp) App.exitApp();
+  };
+  if (App && App.addListener) App.addListener('backButton', () => onBack(true));
+  // Web / pruebas: tecla Escape cierra la hoja superior.
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') onBack(false); });
+}
+
 function showApp() {
   document.getElementById('app-header').hidden = false;
   document.getElementById('view').hidden = false;
@@ -42,6 +57,7 @@ function showApp() {
 async function boot() {
   initServiceWorker();
   wireHeader();
+  wireBackButton();
 
   // Arrancar el motor de automatizaciones en segundo plano (no bloquea UI).
   import('./modules/engine.js').then((m) => m.startEngine()).catch(() => {});
